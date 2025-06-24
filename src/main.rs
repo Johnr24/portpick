@@ -133,12 +133,6 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
 
-    // Manually handle help flag because we're using -h for --host
-    // This placeholder block can be removed as clap handles --help.
-    // if присутствует_флаг_помощи(&cli) { 
-    // }
-
-
     if cli.universal {
         if cli.verbose {
             println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());

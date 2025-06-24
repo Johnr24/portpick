@@ -71,11 +71,10 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 ## How it Works
 
 1.  **Port Data Source Priority:**
-    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`.
-    *   If `--universal` (or `-u`) is NOT used:
-        1.  Tries to read from `src/nmap-services.cache`.
-        2.  If cache is not found or fails to parse, falls back to `/etc/services`.
-        3.  If `/etc/services` also fails, issues a warning.
+    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`. The cache is primarily for future reference or if Nmap site is down, but this command always attempts a fresh fetch.
+    *   If `--universal` (or `-u`) is NOT used (default behavior):
+        1.  Directly uses the system's `/etc/services` file.
+        2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
 2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine.
 3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and locally used ports. Services named "unknown" are ignored.
 4.  **Port Suggestion:**

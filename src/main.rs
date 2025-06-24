@@ -242,38 +242,18 @@ fn main() -> Result<()> {
             Err(e) => return Err(e.context("Failed to fetch remote Nmap services as requested by --universal flag.")),
         }
     } else {
-        // Default: Try local cache first, then system services file
-        match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
-            Ok(cached_content) => {
-                if cli.verbose {
-                    println!("{}", format!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH).cyan());
-                }
-                match parse_services_content(&cached_content, "cached Nmap services list", cli.verbose) {
-                    Ok(cached_ports) => forbidden_ports.extend(cached_ports),
-                    Err(e) => {
-                        eprintln!("{}", format!("Warning: Failed to parse cached Nmap services from {}: {}. Falling back to system services file.", LOCAL_NMAP_CACHE_PATH, e).yellow());
-                        // Fallback to system services
-                        match read_system_services_ports(cli.verbose) {
-                            Ok(system_ports) => forbidden_ports.extend(system_ports),
-                            Err(e_sys) => {
-                                eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys).yellow());
-                                eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
-                            }
-                        }
-                    }
-                }
+        // Default: use system services file directly
+        if cli.verbose {
+            println!("{}", format!("Default mode: Attempting to use system services file: {}", SYSTEM_SERVICES_PATH).cyan());
+        }
+        match read_system_services_ports(cli.verbose) {
+            Ok(system_ports) => {
+                forbidden_ports.extend(system_ports);
             }
-            Err(_) => { // Cache not found or unreadable, try system services
-                if cli.verbose {
-                    println!("{}", format!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH).cyan());
-                }
-                match read_system_services_ports(cli.verbose) {
-                    Ok(system_ports) => forbidden_ports.extend(system_ports),
-                    Err(e_sys) => {
-                        eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys).yellow());
-                        eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
-                    }
-                }
+            Err(e_sys) => {
+                eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys).yellow());
+                eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
+                // Not returning an error here, just proceeding with fewer forbidden ports.
             }
         }
     }

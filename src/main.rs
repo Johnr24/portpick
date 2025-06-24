@@ -1,4 +1,5 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
+use clap::Parser;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
@@ -7,6 +8,15 @@ use std::process::Command;
 use std::str::FromStr;
 
 const LOCAL_IANA_CSV_PATH: &str = "src/service-names-port-numbers.csv";
+const REMOTE_IANA_CSV_URL: &str = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv";
+
+#[derive(Parser, Debug)]
+#[clap(author, version, about, long_about = None)]
+struct Cli {
+    /// Update the local IANA port assignments CSV from the remote source
+    #[clap(short, long)]
+    update: bool,
+}
 
 // Regex to capture port numbers and ranges from CSV "Port Number" column
 // Handles single ports like "80" and ranges like "1024-1028"
@@ -68,6 +78,28 @@ fn read_local_iana_ports() -> Result<HashSet<u16>> {
     Ok(ports)
 }
 
+fn fetch_remote_iana_csv() -> Result<String> {
+    println!("Fetching IANA port data from: {}", REMOTE_IANA_CSV_URL);
+    let response = reqwest::blocking::get(REMOTE_IANA_CSV_URL)
+        .context("Failed to send request to IANA URL")?;
+
+    if !response.status().is_success() {
+        return Err(anyhow!(
+            "Failed to download IANA CSV. Status: {}",
+            response.status()
+        ));
+    }
+    response
+        .text()
+        .context("Failed to read response text from IANA URL")
+}
+
+fn save_iana_csv(content: &str) -> Result<()> {
+    println!("Saving IANA port data to: {}", LOCAL_IANA_CSV_PATH);
+    fs::write(LOCAL_IANA_CSV_PATH, content)
+        .with_context(|| format!("Failed to write IANA CSV to '{}'", LOCAL_IANA_CSV_PATH))
+}
+
 fn get_locally_used_ports() -> Result<HashSet<u16>> {
     println!("Fetching locally used TCP ports...");
     let output = Command::new("lsof")
@@ -118,15 +150,37 @@ fn find_available_port(forbidden_ports: &HashSet<u16>) -> Option<u16> {
 }
 
 fn main() -> Result<()> {
+    let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
+
+    if cli.update {
+        println!("Update flag set. Attempting to update IANA port assignments...");
+        match fetch_remote_iana_csv() {
+            Ok(csv_content) => {
+                match save_iana_csv(&csv_content) {
+                    Ok(_) => println!("Successfully updated local IANA CSV: {}", LOCAL_IANA_CSV_PATH),
+                    Err(e) => {
+                        eprintln!("Error saving updated IANA CSV: {}. Proceeding with existing local data if available.", e);
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Error fetching remote IANA CSV: {}. Proceeding with existing local data if available.", e);
+            }
+        }
+    }
 
     match read_local_iana_ports() {
         Ok(iana_ports) => {
             forbidden_ports.extend(iana_ports);
         }
         Err(e) => {
+            // If update was requested and failed, this error might be more critical.
+            // However, the original behavior was to warn and proceed.
             eprintln!("Warning: Could not read or parse local IANA CSV: {}", e);
             eprintln!("Proceeding with local ports only, but results might be less reliable.");
+            // If cli.update was true, we might want to be stricter here,
+            // but for now, we'll keep the original fallback behavior.
         }
     }
 

@@ -495,7 +495,7 @@ mod tests {
         // We expect a port from 49152-65535 range
         let available = find_available_ports(&forbidden, 1, false);
         assert_eq!(available.len(), 1);
-        assert!(available[0] >= 49152 && available[0] <= 65535);
+        assert!(available[0] >= 49152); // The check for <= 65535 is redundant for u16
         assert_eq!(available[0], 49152); // Specifically, the first one in this range
     }
      #[test]

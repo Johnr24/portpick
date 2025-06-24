@@ -18,15 +18,15 @@ const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services"
 const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the local Nmap services cache
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)] // Re-enable default -h for help
+#[clap(author, version, about, long_about = None)] // -h will now default to help
 struct Cli {
     /// Use the universal Nmap services list (fetches from internet, updates local cache)
     #[clap(short, long)]
     universal: bool,
 
-    /// Explicitly use the host's system services file (e.g., /etc/services). This is the default if --universal is not used.
-    #[clap(long)] // Removed short = 'h'
-    host: bool,
+    /// Explicitly use the local host's system services file (e.g., /etc/services). This is the default if --universal is not used.
+    #[clap(short = 'l', long)]
+    local: bool,
 
     /// Number of ports to find
     #[clap(short, long, default_value_t = 1)]
@@ -142,8 +142,8 @@ fn main() -> Result<()> {
     if cli.universal {
         if cli.verbose {
             println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
-            if cli.host { // --host is specified along with --universal
-                eprintln!("{}", "Warning: --universal and --host flags were both specified. --universal takes precedence.".yellow());
+            if cli.local { // --local is specified along with --universal
+                eprintln!("{}", "Warning: --universal and --local flags were both specified. --universal takes precedence.".yellow());
             }
         }
         match fetch_remote_nmap_services(cli.verbose) {

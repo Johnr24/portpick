@@ -6,19 +6,19 @@
 portpick [OPTIONS]
 ```
 
-By default (if neither `--universal` nor `--host` is specified), `portpick` uses the system's `/etc/services`  file to gather information  about known ports. This is the -h option It also checks for locally listening ports using `lsof`.
+By default (if neither `--universal` nor `--local` is specified), `portpick` uses the system's `/etc/services` file to gather information about known ports. It also checks for locally listening ports using `lsof`.
 
 ## Options
 
 | Flag                      | Short | Description                                                                                     | Default |
 |---------------------------|-------|-------------------------------------------------------------------------------------------------|---------|
 | `--universal`             | `-u`  | Use the universal Nmap services list (fetches from internet, updates local cache).              |         |
-| `--host`                  | `-h`  | Explicitly use the host's system services file (e.g., `/etc/services`). This is the default behavior if `--universal` is not specified. |         |
+| `--local`                 | `-l`  | Explicitly use the local host's system services file (e.g., `/etc/services`). This is the default behavior if `--universal` is not specified. |         |
 | `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`     |
 | `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |         |
 | `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |         |
 | `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       |         |
-| `--help`                  |       | Print help information. (Note: `-h` is now for `--host`)                                        |         |
+| `--help`                  | `-h`  | Print help information.                                                                         |         |
 | `--version`               | `-V`  | Print version information.                                                                      |         |
 
 ## Examples
@@ -70,9 +70,9 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 ## How it Works
 
 1.  **Port Data Source Priority:**
-    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`. This option takes precedence if `--host` is also specified.
-    *   If `--host` (or `-h`) is used (and `--universal` is not): Explicitly uses the system's `/etc/services` file.
-    *   If neither `--universal` nor `--host` is specified (default behavior):
+    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`. This option takes precedence if `--local` is also specified.
+    *   If `--local` (or `-l`) is used (and `--universal` is not): Explicitly uses the system's `/etc/services` file.
+    *   If neither `--universal` nor `--local` is specified (default behavior):
         1.  Directly uses the system's `/etc/services` file.
         2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
 2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine.

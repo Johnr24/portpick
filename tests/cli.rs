@@ -152,7 +152,7 @@ fn test_cli_help() -> Result<(), Box<dyn std::error::Error>> {
         .success()
         .stdout(predicate::str::contains("portpick [OPTIONS]"))
         .stdout(predicate::str::contains("--universal"))
-        .stdout(predicate::str::contains("--host"))
+        .stdout(predicate::str::contains("--local"))
         .stdout(predicate::str::contains("--number-of-ports"))
         .stdout(predicate::str::contains("--help"));
     Ok(())
@@ -225,9 +225,9 @@ fn test_cli_verbose_output() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_cli_host_flag() -> Result<(), Box<dyn std::error::Error>> {
+fn test_cli_local_flag() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["--host", "-v"]); // Use verbose to check which path it attempts
+    cmd.args(["--local", "-v"]); // Use verbose to check which path it attempts
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Default mode: Attempting to use system services file: /etc/services"));
@@ -268,12 +268,12 @@ fn test_cli_universal_flag_network_and_cache() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn test_cli_universal_and_host_warning() -> Result<(), Box<dyn std::error::Error>> {
+fn test_cli_universal_and_local_warning() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-u", "--host", "-v"]);
+    cmd.args(["-u", "--local", "-v"]);
     cmd.assert()
         .success() // Command should still succeed
-        .stderr(predicate::str::contains("Warning: --universal and --host flags were both specified. --universal takes precedence."));
+        .stderr(predicate::str::contains("Warning: --universal and --local flags were both specified. --universal takes precedence."));
     Ok(())
 }
 

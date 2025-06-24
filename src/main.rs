@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result}; // Removed 'anyhow' type alias to fix unused import warning
 use clap::Parser;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -7,15 +7,15 @@ use std::fs;
 use std::process::Command;
 use std::str::FromStr;
 
-const LOCAL_NMAP_SERVICES_PATH: &str = "src/nmap-services";
-const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services";
+const SYSTEM_SERVICES_PATH: &str = "/etc/services"; // Standard path for system services file
+const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services"; // URL for official Nmap services
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    /// Update the local nmap-services file from the remote source
-    #[clap(short, long)]
-    update: bool,
+    /// Fetch and use the official Nmap services list from the internet for this run
+    #[clap(long)]
+    fetch_nmap: bool,
 
     /// Number of ports to find
     #[clap(short, long, default_value_t = 1)]
@@ -33,43 +33,48 @@ struct Cli {
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn read_local_nmap_services() -> Result<HashSet<u16>> {
-    println!("Reading port data from local nmap-services file: {}", LOCAL_NMAP_SERVICES_PATH);
-    let file_content = fs::read_to_string(LOCAL_NMAP_SERVICES_PATH)
-        .with_context(|| format!("Failed to read local nmap-services file at '{}'", LOCAL_NMAP_SERVICES_PATH))?;
-    println!("Parsing nmap-services data...");
-
+fn parse_services_content(content: &str, source_description: &str) -> Result<HashSet<u16>> {
+    println!("Parsing services data from {}...", source_description);
     let mut ports = HashSet::new();
-    for line in file_content.lines() {
+    for line in content.lines() {
         let trimmed_line = line.trim();
         if trimmed_line.starts_with('#') || trimmed_line.is_empty() {
             continue;
         }
 
-        let parts: Vec<&str> = trimmed_line.split('\t').collect();
-        if parts.len() < 2 {
-            continue; // Not enough parts for service name and port/protocol
-        }
-
-        let service_name = parts[0];
-        if service_name.to_lowercase() == "unknown" {
+        // Use split_whitespace() for flexibility with /etc/services and nmap-services
+        let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
+        if parts.len() < 2 { // Need at least service_name and port/protocol
             continue;
         }
 
-        let port_protocol_pair: Vec<&str> = parts[1].split('/').collect();
+        let service_name = parts[0];
+        if service_name.to_lowercase() == "unknown" { // Ignore "unknown" services
+            continue;
+        }
+
+        let port_protocol_str = parts[1]; // This should be "port/protocol"
+        let port_protocol_pair: Vec<&str> = port_protocol_str.split('/').collect();
         if port_protocol_pair.len() == 2 {
             let port_str = port_protocol_pair[0];
             let protocol_str = port_protocol_pair[1];
 
-            if protocol_str.to_lowercase() == "tcp" {
+            if protocol_str.to_lowercase() == "tcp" { // Only interested in TCP ports
                 if let Ok(port) = u16::from_str(port_str) {
                     ports.insert(port);
                 }
             }
         }
     }
-    println!("Found {} distinct TCP ports from nmap-services file.", ports.len());
+    println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
     Ok(ports)
+}
+
+fn read_system_services_ports() -> Result<HashSet<u16>> {
+    println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
+    let file_content = fs::read_to_string(SYSTEM_SERVICES_PATH)
+        .with_context(|| format!("Failed to read system services file at '{}'", SYSTEM_SERVICES_PATH))?;
+    parse_services_content(&file_content, SYSTEM_SERVICES_PATH)
 }
 
 fn fetch_remote_nmap_services() -> Result<String> {
@@ -85,7 +90,7 @@ fn fetch_remote_nmap_services() -> Result<String> {
         .context("Failed to send request to nmap-services URL")?;
 
     if !response.status().is_success() {
-        return Err(anyhow!(
+        return Err(anyhow::anyhow!(
             "Failed to download nmap-services file. Status: {}",
             response.status()
         ));
@@ -93,12 +98,6 @@ fn fetch_remote_nmap_services() -> Result<String> {
     response
         .text()
         .context("Failed to read response text from nmap-services URL")
-}
-
-fn save_nmap_services_file(content: &str) -> Result<()> {
-    println!("Saving nmap-services data to: {}", LOCAL_NMAP_SERVICES_PATH);
-    fs::write(LOCAL_NMAP_SERVICES_PATH, content)
-        .with_context(|| format!("Failed to write nmap-services file to '{}'", LOCAL_NMAP_SERVICES_PATH))
 }
 
 fn get_locally_used_ports() -> Result<HashSet<u16>> {
@@ -193,30 +192,34 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
 
-    if cli.update {
-        println!("Update flag set. Attempting to update nmap-services file...");
+    if cli.fetch_nmap {
+        println!("Fetch Nmap services flag set. Attempting to fetch and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
         match fetch_remote_nmap_services() {
-            Ok(file_content) => {
-                match save_nmap_services_file(&file_content) {
-                    Ok(_) => println!("Successfully updated local nmap-services file: {}", LOCAL_NMAP_SERVICES_PATH),
+            Ok(nmap_content) => {
+                match parse_services_content(&nmap_content, "remote Nmap services list") {
+                    Ok(nmap_ports) => forbidden_ports.extend(nmap_ports),
                     Err(e) => {
-                        eprintln!("Error saving updated nmap-services file: {}. Proceeding with existing local data if available.", e);
+                        // Critical if --fetch-nmap was used.
+                        return Err(e.context("Failed to parse fetched Nmap services content."));
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Error fetching remote nmap-services file: {}. Proceeding with existing local data if available.", e);
+                // Critical if --fetch-nmap was used.
+                return Err(e.context("Failed to fetch remote Nmap services as requested by --fetch-nmap flag."));
             }
         }
-    }
-
-    match read_local_nmap_services() {
-        Ok(nmap_ports) => {
-            forbidden_ports.extend(nmap_ports);
-        }
-        Err(e) => {
-            eprintln!("Warning: Could not read or parse local nmap-services file: {}", e);
-            eprintln!("Proceeding with local ports only, but results might be less reliable.");
+    } else {
+        // Default: use system services file
+        match read_system_services_ports() {
+            Ok(system_ports) => {
+                forbidden_ports.extend(system_ports);
+            }
+            Err(e) => {
+                eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e);
+                eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
+                // Not returning an error here, just proceeding with fewer forbidden ports.
+            }
         }
     }
 

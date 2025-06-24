@@ -234,9 +234,14 @@ fn main() -> Result<()> {
         return Ok(());
     }
     
-    if cli.continuous && cli.number_of_ports > 1 && (49151 - 1024 + 1 + 65535 - 49152 + 1) < cli.number_of_ports {
+    // Calculate total number of ports in the search ranges to check against requested number of continuous ports.
+    // (1024..=49151) -> 49151 - 1024 + 1 = 48128 ports
+    // (49152..=65535) -> 65535 - 49152 + 1 = 16384 ports
+    // Total = 48128 + 16384 = 64512 ports. This fits in u16.
+    const TOTAL_SEARCHABLE_PORTS: u16 = (49151u16 - 1024u16 + 1u16) + (65535u16 - 49152u16 + 1u16);
+    if cli.continuous && cli.number_of_ports > 1 && TOTAL_SEARCHABLE_PORTS < cli.number_of_ports {
         // Basic check if requested number of continuous ports can even exist in the searched ranges
-        println!("\nWarning: Requested number of continuous ports ({}) is very large and might not be possible to find.", cli.number_of_ports);
+        println!("\nWarning: Requested number of continuous ports ({}) is very large and might not be possible to find as it exceeds the total number of searchable ports ({}).", cli.number_of_ports, TOTAL_SEARCHABLE_PORTS);
     }
 
 

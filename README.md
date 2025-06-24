@@ -46,10 +46,23 @@ portpick --fetch-nmap -v
 
 ## Installation
 
-If you have Rust installed, you can install `portpick` using cargo:
+If you have Rust installed, you can install `portpick` using cargo.
+
+**From a local clone:**
 ```bash
+# Clone the repository (if you haven't already)
+# git clone <your-repo-url>
+# cd portpick
 cargo install --path .
 ```
+
+**Directly from GitHub:**
+Once the repository is public on GitHub, you can install it directly using:
+```bash
+cargo install --git https://github.com/your-username/portpick.git
+```
+Replace `https://github.com/your-username/portpick.git` with the actual URL of your GitHub repository.
+
 This will place the `portpick` binary in your cargo binary directory (usually `~/.cargo/bin/`), which should be in your `PATH`.
 
 ## How it Works

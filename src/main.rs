@@ -2,10 +2,11 @@ use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
+use std::fs;
 use std::process::Command;
 use std::str::FromStr;
 
-const IANA_CSV_URL: &str = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv";
+const LOCAL_IANA_CSV_PATH: &str = "src/service-names-port-numbers.csv";
 
 // Regex to capture port numbers and ranges from CSV "Port Number" column
 // Handles single ports like "80" and ranges like "1024-1028"
@@ -15,10 +16,10 @@ static PORT_RE: Lazy<Regex> =
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn fetch_iana_ports() -> Result<HashSet<u16>> {
-    println!("Fetching port data from IANA CSV...");
-    let response = reqwest::blocking::get(IANA_CSV_URL)?;
-    let csv_content = response.text()?;
+fn read_local_iana_ports() -> Result<HashSet<u16>> {
+    println!("Reading port data from local IANA CSV: {}", LOCAL_IANA_CSV_PATH);
+    let csv_content = fs::read_to_string(LOCAL_IANA_CSV_PATH)
+        .with_context(|| format!("Failed to read local IANA CSV file at '{}'", LOCAL_IANA_CSV_PATH))?;
     println!("Parsing IANA CSV port data...");
 
     let mut ports = HashSet::new();
@@ -119,12 +120,12 @@ fn find_available_port(forbidden_ports: &HashSet<u16>) -> Option<u16> {
 fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
-    match fetch_iana_ports() {
+    match read_local_iana_ports() {
         Ok(iana_ports) => {
             forbidden_ports.extend(iana_ports);
         }
         Err(e) => {
-            eprintln!("Warning: Could not fetch or parse IANA CSV ports: {}", e);
+            eprintln!("Warning: Could not read or parse local IANA CSV: {}", e);
             eprintln!("Proceeding with local ports only, but results might be less reliable.");
         }
     }

@@ -1,54 +1,69 @@
 use anyhow::{Context, Result};
 use once_cell::sync::Lazy;
 use regex::Regex;
-use scraper::{Html, Selector};
 use std::collections::HashSet;
 use std::process::Command;
 use std::str::FromStr;
 
-const WIKIPEDIA_URL: &str = "https://en.wikipedia.org/wiki/List_of_TCP_and_UDP_port_numbers";
+const IANA_CSV_URL: &str = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv";
 
-// Regex to capture port numbers and ranges from table cells
-// Handles single ports like "80" and ranges like "71--74" or "6881–6887" (en-dash)
+// Regex to capture port numbers and ranges from CSV "Port Number" column
+// Handles single ports like "80" and ranges like "1024-1028"
 static PORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*(\d{1,5})\s*(?:--|–)\s*(\d{1,5})\s*$|^\s*(\d{1,5})\s*$").unwrap());
+    Lazy::new(|| Regex::new(r"^\s*(\d{1,5})\s*-\s*(\d{1,5})\s*$|^\s*(\d{1,5})\s*$").unwrap());
 
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn fetch_wikipedia_ports() -> Result<HashSet<u16>> {
-    println!("Fetching port data from Wikipedia...");
-    let response = reqwest::blocking::get(WIKIPEDIA_URL)?;
-    let html_content = response.text()?;
-    println!("Parsing Wikipedia port data...");
-
-    let document = Html::parse_document(&html_content);
-    let table_cell_selector = Selector::parse("td").unwrap();
+fn fetch_iana_ports() -> Result<HashSet<u16>> {
+    println!("Fetching port data from IANA CSV...");
+    let response = reqwest::blocking::get(IANA_CSV_URL)?;
+    let csv_content = response.text()?;
+    println!("Parsing IANA CSV port data...");
 
     let mut ports = HashSet::new();
+    let mut rdr = csv::ReaderBuilder::new()
+        .has_headers(true)
+        .from_reader(csv_content.as_bytes());
 
-    for element in document.select(&table_cell_selector) {
-        let text = element.text().collect::<String>();
-        if let Some(captures) = PORT_RE.captures(text.trim()) {
-            if let Some(single_port_match) = captures.get(3) {
-                if let Ok(port) = u16::from_str(single_port_match.as_str()) {
-                    ports.insert(port);
-                }
-            } else if let (Some(start_port_match), Some(end_port_match)) =
-                (captures.get(1), captures.get(2))
-            {
-                if let (Ok(start_port), Ok(end_port)) = (
-                    u16::from_str(start_port_match.as_str()),
-                    u16::from_str(end_port_match.as_str()),
-                ) {
-                    for port in start_port..=end_port {
+    // Get header positions
+    let headers = rdr.headers()?.clone();
+    let port_number_idx = headers.iter().position(|h| h == "Port Number");
+
+    if port_number_idx.is_none() {
+        return Err(anyhow::anyhow!("Could not find 'Port Number' column in IANA CSV."));
+    }
+    let port_number_idx = port_number_idx.unwrap();
+
+    for result in rdr.records() {
+        let record = result?;
+        if let Some(port_str) = record.get(port_number_idx) {
+            if port_str.trim().is_empty() {
+                continue;
+            }
+            if let Some(captures) = PORT_RE.captures(port_str.trim()) {
+                if let Some(single_port_match) = captures.get(3) {
+                    if let Ok(port) = u16::from_str(single_port_match.as_str()) {
                         ports.insert(port);
+                    }
+                } else if let (Some(start_port_match), Some(end_port_match)) =
+                    (captures.get(1), captures.get(2))
+                {
+                    if let (Ok(start_port), Ok(end_port)) = (
+                        u16::from_str(start_port_match.as_str()),
+                        u16::from_str(end_port_match.as_str()),
+                    ) {
+                        if start_port <= end_port { // Ensure valid range
+                            for port in start_port..=end_port {
+                                ports.insert(port);
+                            }
+                        }
                     }
                 }
             }
         }
     }
-    println!("Found {} ports/ranges from Wikipedia.", ports.len());
+    println!("Found {} distinct ports/port ranges from IANA CSV.", ports.len());
     Ok(ports)
 }
 
@@ -104,12 +119,12 @@ fn find_available_port(forbidden_ports: &HashSet<u16>) -> Option<u16> {
 fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
-    match fetch_wikipedia_ports() {
-        Ok(wiki_ports) => {
-            forbidden_ports.extend(wiki_ports);
+    match fetch_iana_ports() {
+        Ok(iana_ports) => {
+            forbidden_ports.extend(iana_ports);
         }
         Err(e) => {
-            eprintln!("Warning: Could not fetch or parse Wikipedia ports: {}", e);
+            eprintln!("Warning: Could not fetch or parse IANA CSV ports: {}", e);
             eprintln!("Proceeding with local ports only, but results might be less reliable.");
         }
     }

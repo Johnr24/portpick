@@ -273,7 +273,7 @@ fn test_cli_universal_and_host_warning() -> Result<(), Box<dyn std::error::Error
     cmd.args(["-u", "--host", "-v"]);
     cmd.assert()
         .success() // Command should still succeed
-        .stdout(predicate::str::contains("Warning: --universal and --host flags were both specified. --universal takes precedence."));
+        .stderr(predicate::str::contains("Warning: --universal and --host flags were both specified. --universal takes precedence."));
     Ok(())
 }
 

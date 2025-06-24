@@ -1,10 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result; // Context is not used here
 use colored::*;
-use once_cell::sync::Lazy;
-use rand::seq::SliceRandom;
-use regex::Regex;
+// once_cell::sync::Lazy is not used here
+// rand::seq::SliceRandom is not used here
+// regex::Regex is not used here
 use std::collections::HashSet;
-use std::fs;
+// std::fs is not used here
 use std::str::FromStr;
 // Note: reqwest is used by fetch_remote_nmap_services, which is called by main,
 // but not directly by the functions being moved here for unit testing.

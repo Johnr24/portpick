@@ -80,7 +80,14 @@ fn read_local_iana_ports() -> Result<HashSet<u16>> {
 
 fn fetch_remote_iana_csv() -> Result<String> {
     println!("Fetching IANA port data from: {}", REMOTE_IANA_CSV_URL);
-    let response = reqwest::blocking::get(REMOTE_IANA_CSV_URL)
+    
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
+        .build()
+        .context("Failed to build reqwest client")?;
+
+    let response = client.get(REMOTE_IANA_CSV_URL)
+        .send()
         .context("Failed to send request to IANA URL")?;
 
     if !response.status().is_success() {

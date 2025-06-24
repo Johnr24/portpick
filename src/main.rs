@@ -224,16 +224,15 @@ fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
     // Manually handle help flag because we're using -h for --host
-    if присутствует_флаг_помощи(&cli) { // This is a placeholder for actual help flag check logic if needed,
-                                     // but clap usually handles --help even with disable_help_flag for -h.
-                                     // For simplicity, we'll rely on clap's --help.
-    }
+    // This placeholder block can be removed as clap handles --help.
+    // if присутствует_флаг_помощи(&cli) { 
+    // }
 
 
     if cli.universal {
         if cli.verbose {
             println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
-            if cli.host {
+            if cli.host { // --host is specified along with --universal
                 eprintln!("{}", "Warning: --universal and --host flags were both specified. --universal takes precedence.".yellow());
             }
         }

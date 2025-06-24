@@ -57,7 +57,7 @@ cargo install --path .
 ```
 
 **Directly from GitHub:**
-Once the repository is public on GitHub, you can install it directly using:
+ you can install it directly from github using:
 ```bash
 cargo install --git https://github.com/Johnr24/portpick.git
 ```

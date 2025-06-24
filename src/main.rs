@@ -29,12 +29,19 @@ struct Cli {
     /// Output ports in Docker-compose format (e.g., 8080:)
     #[clap(short, long)]
     docker_format: bool,
+
+    /// Enable verbose output
+    #[clap(short, long)]
+    verbose: bool,
 }
 
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn parse_services_content(content: &str, _source_description: &str) -> Result<HashSet<u16>> {
+fn parse_services_content(content: &str, source_description: &str, verbose: bool) -> Result<HashSet<u16>> {
+    if verbose {
+        println!("Parsing services data from {}...", source_description);
+    }
     let mut ports = HashSet::new();
     for line in content.lines() {
         let trimmed_line = line.trim();
@@ -66,25 +73,33 @@ fn parse_services_content(content: &str, _source_description: &str) -> Result<Ha
             }
         }
     }
-    // Removed: println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
+    if verbose {
+        println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
+    }
     Ok(ports)
 }
 
-fn read_system_services_ports() -> Result<HashSet<u16>> {
-    // Removed: println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
+fn read_system_services_ports(verbose: bool) -> Result<HashSet<u16>> {
+    if verbose {
+        println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
+    }
     let file_content = fs::read_to_string(SYSTEM_SERVICES_PATH)
         .with_context(|| format!("Failed to read system services file at '{}'", SYSTEM_SERVICES_PATH))?;
-    parse_services_content(&file_content, "system services file")
+    parse_services_content(&file_content, "system services file", verbose)
 }
 
-fn save_nmap_cache(content: &str) -> Result<()> {
-    // Removed: println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
+fn save_nmap_cache(content: &str, verbose: bool) -> Result<()> {
+    if verbose {
+        println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
+    }
     fs::write(LOCAL_NMAP_CACHE_PATH, content)
         .with_context(|| format!("Failed to write Nmap services cache to '{}'", LOCAL_NMAP_CACHE_PATH))
 }
 
-fn fetch_remote_nmap_services() -> Result<String> {
-    // Removed: println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
+fn fetch_remote_nmap_services(verbose: bool) -> Result<String> {
+    if verbose {
+        println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
+    }
     
     let client = reqwest::blocking::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -106,8 +121,10 @@ fn fetch_remote_nmap_services() -> Result<String> {
         .context("Failed to read response text from nmap-services URL")
 }
 
-fn get_locally_used_ports() -> Result<HashSet<u16>> {
-    // Removed: println!("Fetching locally used TCP ports...");
+fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
+    if verbose {
+        println!("Fetching locally used TCP ports...");
+    }
     let output = Command::new("lsof")
         .args(["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
         .output()
@@ -133,7 +150,9 @@ fn get_locally_used_ports() -> Result<HashSet<u16>> {
             }
         }
     }
-    // Removed: println!("Found {} locally listening TCP ports.", ports.len());
+    if verbose {
+        println!("Found {} locally listening TCP ports.", ports.len());
+    }
     Ok(ports)
 }
 
@@ -199,17 +218,21 @@ fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
     if cli.fetch_nmap {
-        // Removed: println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
-        match fetch_remote_nmap_services() {
+        if cli.verbose {
+            println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
+        }
+        match fetch_remote_nmap_services(cli.verbose) {
             Ok(nmap_content) => {
                 // Attempt to save to cache, issue warning on failure but proceed
-                if let Err(e) = save_nmap_cache(&nmap_content) {
+                if let Err(e) = save_nmap_cache(&nmap_content, cli.verbose) {
                     eprintln!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e);
                 } else {
-                    // Removed: println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
+                    if cli.verbose {
+                        println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
+                    }
                 }
                 // Parse the fetched content
-                match parse_services_content(&nmap_content, "fetched Nmap services list") {
+                match parse_services_content(&nmap_content, "fetched Nmap services list", cli.verbose) {
                     Ok(nmap_ports) => forbidden_ports.extend(nmap_ports),
                     Err(e) => return Err(e.context("Failed to parse fetched Nmap services content.")),
                 }
@@ -220,13 +243,15 @@ fn main() -> Result<()> {
         // Default: Try local cache first, then system services file
         match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
             Ok(cached_content) => {
-                // Removed: println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
-                match parse_services_content(&cached_content, "cached Nmap services list") {
+                if cli.verbose {
+                    println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
+                }
+                match parse_services_content(&cached_content, "cached Nmap services list", cli.verbose) {
                     Ok(cached_ports) => forbidden_ports.extend(cached_ports),
                     Err(e) => {
                         eprintln!("Warning: Failed to parse cached Nmap services from {}: {}. Falling back to system services file.", LOCAL_NMAP_CACHE_PATH, e);
                         // Fallback to system services
-                        match read_system_services_ports() {
+                        match read_system_services_ports(cli.verbose) {
                             Ok(system_ports) => forbidden_ports.extend(system_ports),
                             Err(e_sys) => {
                                 eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
@@ -237,8 +262,10 @@ fn main() -> Result<()> {
                 }
             }
             Err(_) => { // Cache not found or unreadable, try system services
-                // Removed: println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
-                match read_system_services_ports() {
+                if cli.verbose {
+                    println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
+                }
+                match read_system_services_ports(cli.verbose) {
                     Ok(system_ports) => forbidden_ports.extend(system_ports),
                     Err(e_sys) => {
                         eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
@@ -249,7 +276,7 @@ fn main() -> Result<()> {
         }
     }
 
-    match get_locally_used_ports() {
+    match get_locally_used_ports(cli.verbose) {
         Ok(local_ports) => {
             forbidden_ports.extend(local_ports);
         }
@@ -260,7 +287,9 @@ fn main() -> Result<()> {
         }
     }
     
-    // Removed: println!("Total {} forbidden ports collected.", forbidden_ports.len());
+    if cli.verbose {
+        println!("Total {} forbidden ports collected.", forbidden_ports.len());
+    }
 
     if cli.number_of_ports == 0 {
         println!("\nNumber of ports requested is 0. No ports to find.");

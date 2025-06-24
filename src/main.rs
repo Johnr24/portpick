@@ -14,14 +14,14 @@ const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services"
 const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the local Nmap services cache
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None, disable_help_flag = true)] // Disable default -h for help
+#[clap(author, version, about, long_about = None)] // Re-enable default -h for help
 struct Cli {
     /// Use the universal Nmap services list (fetches from internet, updates local cache)
     #[clap(short, long)]
     universal: bool,
 
     /// Explicitly use the host's system services file (e.g., /etc/services). This is the default if --universal is not used.
-    #[clap(short = 'h', long)]
+    #[clap(long)] // Removed short = 'h'
     host: bool,
 
     /// Number of ports to find
@@ -44,7 +44,8 @@ struct Cli {
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn parse_services_content(content: &str, source_description: &str, verbose: bool) -> Result<HashSet<u16>> {
+// Make function public for tests
+pub fn parse_services_content(content: &str, source_description: &str, verbose: bool) -> Result<HashSet<u16>> {
     if verbose {
         println!("{}", format!("Parsing services data from {}...", source_description).cyan());
     }
@@ -163,6 +164,64 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
 }
 
 fn find_available_ports(
+    forbidden_ports: &HashSet<u16>,
+    num_ports: u16,
+    continuous: bool,
+) -> Vec<u16> {
+    let mut found_ports = Vec::new();
+    if num_ports == 0 {
+        return found_ports;
+    }
+
+    let port_ranges = [(1024u16, 49151u16), (49152u16, 65535u16)];
+
+    if continuous {
+        for &(start_range, end_range) in &port_ranges {
+            // Ensure the block search doesn't go out of u16 bounds or range
+            // end_range.saturating_sub(num_ports -1) prevents underflow if num_ports is large
+            let effective_end_search = if num_ports > 0 {
+                end_range.saturating_sub(num_ports -1)
+            } else {
+                end_range // Should not happen due to num_ports == 0 check, but defensive
+            };
+
+            for p_start in start_range..=effective_end_search {
+                let mut block_available = true;
+                let mut current_block = Vec::new();
+                for i in 0..num_ports {
+                    let current_port = p_start + i;
+                    // Check if current_port is within the overall valid port range (0-65535)
+                    // and not forbidden. p_start + i could exceed u16::MAX if not careful,
+                    // but since p_start <= effective_end_search and effective_end_search + num_ports -1 <= end_range <= u16::MAX,
+                    // this check is mostly for forbidden_ports.
+                    if forbidden_ports.contains(&current_port) {
+                        block_available = false;
+                        break;
+                    }
+                    current_block.push(current_port);
+                }
+                if block_available {
+                    return current_block; // Found a continuous block
+                }
+            }
+        }
+    } else {
+        for &(start_range, end_range) in &port_ranges {
+            for port in start_range..=end_range {
+                if !forbidden_ports.contains(&port) {
+                    found_ports.push(port);
+                    if found_ports.len() == num_ports as usize {
+                        return found_ports;
+                    }
+                }
+            }
+        }
+    }
+    found_ports // Return what was found, even if less than num_ports
+}
+
+// Make function public for tests
+pub fn find_available_ports(
     forbidden_ports: &HashSet<u16>,
     num_ports: u16,
     continuous: bool,
@@ -356,147 +415,4 @@ fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*; // Import everything from the outer scope
-
-    #[test]
-    fn test_parse_services_content_empty() {
-        let content = "";
-        let ports = parse_services_content(content, "test_empty", false).unwrap();
-        assert!(ports.is_empty());
-    }
-
-    #[test]
-    fn test_parse_services_content_comments_and_blank_lines() {
-        let content = "# This is a comment\n\n  # Another comment\n  \n";
-        let ports = parse_services_content(content, "test_comments", false).unwrap();
-        assert!(ports.is_empty());
-    }
-
-    #[test]
-    fn test_parse_services_content_valid_tcp() {
-        let content = "service1\t80/tcp\nservice2   100/tcp # comment\nservice3 200/tcp";
-        let ports = parse_services_content(content, "test_valid_tcp", false).unwrap();
-        assert_eq!(ports.len(), 3);
-        assert!(ports.contains(&80));
-        assert!(ports.contains(&100));
-        assert!(ports.contains(&200));
-    }
-
-    #[test]
-    fn test_parse_services_content_ignore_udp_and_unknown() {
-        let content = "service_tcp\t80/tcp\nservice_udp\t53/udp\nunknown\t123/tcp\nvalid_service 443/tcp";
-        let ports = parse_services_content(content, "test_ignore_udp_unknown", false).unwrap();
-        assert_eq!(ports.len(), 2);
-        assert!(ports.contains(&80));
-        assert!(ports.contains(&443));
-        assert!(!ports.contains(&53));
-        assert!(!ports.contains(&123));
-    }
-
-    #[test]
-    fn test_parse_services_content_mixed_delimiters() {
-        let content = "http\t80/tcp\nhttps  443/tcp\nssh 22/tcp # Secure Shell";
-        let ports = parse_services_content(content, "test_mixed_delimiters", false).unwrap();
-        assert_eq!(ports.len(), 3);
-        assert!(ports.contains(&80));
-        assert!(ports.contains(&443));
-        assert!(ports.contains(&22));
-    }
-
-    #[test]
-    fn test_find_available_ports_single() {
-        let mut forbidden = HashSet::new();
-        forbidden.insert(1024);
-        forbidden.insert(1025);
-        let available = find_available_ports(&forbidden, 1, false);
-        assert_eq!(available.len(), 1);
-        assert_eq!(available[0], 1026);
-    }
-
-    #[test]
-    fn test_find_available_ports_multiple_non_continuous() {
-        let mut forbidden = HashSet::new();
-        forbidden.insert(1024);
-        forbidden.insert(1026);
-        let available = find_available_ports(&forbidden, 2, false);
-        assert_eq!(available.len(), 2);
-        assert_eq!(available[0], 1025);
-        assert_eq!(available[1], 1027);
-    }
-
-    #[test]
-    fn test_find_available_ports_continuous() {
-        let mut forbidden = HashSet::new();
-        forbidden.insert(1024);
-        forbidden.insert(1027); // Gap between 1026 and 1028
-        let available = find_available_ports(&forbidden, 3, true);
-        assert_eq!(available.len(), 3);
-        assert_eq!(available, vec![1028, 1029, 1030]);
-    }
-    
-    #[test]
-    fn test_find_available_ports_continuous_at_range_boundary() {
-        let mut forbidden = HashSet::new();
-        // Forbid all but the last 3 ports in the first range
-        for p in 1024..(49151 - 2) {
-            forbidden.insert(p);
-        }
-        let available = find_available_ports(&forbidden, 3, true);
-        assert_eq!(available.len(), 3);
-        assert_eq!(available, vec![49149, 49150, 49151]);
-    }
-
-    #[test]
-    fn test_find_available_ports_none_available_in_range() {
-        let mut forbidden = HashSet::new();
-        for port in 1024..=65535 { // Forbid all possible ports
-            forbidden.insert(port);
-        }
-        let available = find_available_ports(&forbidden, 1, false);
-        assert!(available.is_empty());
-    }
-
-    #[test]
-    fn test_find_available_ports_num_ports_zero() {
-        let forbidden = HashSet::new();
-        let available = find_available_ports(&forbidden, 0, false);
-        assert!(available.is_empty());
-        let available_continuous = find_available_ports(&forbidden, 0, true);
-        assert!(available_continuous.is_empty());
-    }
-
-    #[test]
-    fn test_find_available_ports_prefer_registered_range() {
-        let forbidden = HashSet::new(); // No ports forbidden initially
-        // We expect a port from 1024-49151 range first
-        let available = find_available_ports(&forbidden, 1, false);
-        assert_eq!(available.len(), 1);
-        assert!(available[0] >= 1024 && available[0] <= 49151);
-        assert_eq!(available[0], 1024); // Specifically, the first one
-    }
-
-    #[test]
-    fn test_find_available_ports_fallback_to_dynamic_range() {
-        let mut forbidden = HashSet::new();
-        for port in 1024..=49151 { // Forbid all registered ports
-            forbidden.insert(port);
-        }
-        // We expect a port from 49152-65535 range
-        let available = find_available_ports(&forbidden, 1, false);
-        assert_eq!(available.len(), 1);
-        assert!(available[0] >= 49152); // The check for <= 65535 is redundant for u16
-        assert_eq!(available[0], 49152); // Specifically, the first one in this range
-    }
-     #[test]
-    fn test_find_available_ports_continuous_block_too_large() {
-        let forbidden = HashSet::new();
-        // Request more ports than available in any single continuous block in the ranges
-        let num_ports_too_large = (49151 - 1024 + 1) + (65535 - 49152 + 1) + 100; // Larger than total
-        let available = find_available_ports(&forbidden, num_ports_too_large, true);
-        assert!(available.is_empty(), "Should not find a block larger than total available ports");
-    }
 }

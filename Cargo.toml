@@ -11,5 +11,9 @@ anyhow = "1.0.82"
 clap = { version = "4.5.4", features = ["derive"] }
 colored = "2.1.0"
 rand = "0.8.5"
+
+[dev-dependencies]
+assert_cmd = "2.0"
+predicates = "3.0"
 # For macOS, lsof is usually available. For other OS, different commands/libraries might be needed.
 # This example will focus on macOS as per user's system info.

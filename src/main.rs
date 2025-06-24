@@ -7,8 +7,8 @@ use std::fs;
 use std::process::Command;
 use std::str::FromStr;
 
-const LOCAL_IANA_CSV_PATH: &str = "src/service-names-port-numbers.csv";
-const REMOTE_IANA_CSV_URL: &str = "https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.csv";
+const LOCAL_NMAP_SERVICES_PATH: &str = "src/nmap-services";
+const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services";
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
@@ -18,93 +18,75 @@ struct Cli {
     update: bool,
 }
 
-// Regex to capture port numbers and ranges from CSV "Port Number" column
-// Handles single ports like "80" and ranges like "1024-1028"
-static PORT_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^\s*(\d{1,5})\s*-\s*(\d{1,5})\s*$|^\s*(\d{1,5})\s*$").unwrap());
-
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn read_local_iana_ports() -> Result<HashSet<u16>> {
-    println!("Reading port data from local IANA CSV: {}", LOCAL_IANA_CSV_PATH);
-    let csv_content = fs::read_to_string(LOCAL_IANA_CSV_PATH)
-        .with_context(|| format!("Failed to read local IANA CSV file at '{}'", LOCAL_IANA_CSV_PATH))?;
-    println!("Parsing IANA CSV port data...");
+fn read_local_nmap_services() -> Result<HashSet<u16>> {
+    println!("Reading port data from local nmap-services file: {}", LOCAL_NMAP_SERVICES_PATH);
+    let file_content = fs::read_to_string(LOCAL_NMAP_SERVICES_PATH)
+        .with_context(|| format!("Failed to read local nmap-services file at '{}'", LOCAL_NMAP_SERVICES_PATH))?;
+    println!("Parsing nmap-services data...");
 
     let mut ports = HashSet::new();
-    let mut rdr = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(csv_content.as_bytes());
+    for line in file_content.lines() {
+        let trimmed_line = line.trim();
+        if trimmed_line.starts_with('#') || trimmed_line.is_empty() {
+            continue;
+        }
 
-    // Get header positions
-    let headers = rdr.headers()?.clone();
-    let port_number_idx = headers.iter().position(|h| h == "Port Number");
+        let parts: Vec<&str> = trimmed_line.split('\t').collect();
+        if parts.len() < 2 {
+            continue; // Not enough parts for service name and port/protocol
+        }
 
-    if port_number_idx.is_none() {
-        return Err(anyhow::anyhow!("Could not find 'Port Number' column in IANA CSV."));
-    }
-    let port_number_idx = port_number_idx.unwrap();
+        let service_name = parts[0];
+        if service_name.to_lowercase() == "unknown" {
+            continue;
+        }
 
-    for result in rdr.records() {
-        let record = result?;
-        if let Some(port_str) = record.get(port_number_idx) {
-            if port_str.trim().is_empty() {
-                continue;
-            }
-            if let Some(captures) = PORT_RE.captures(port_str.trim()) {
-                if let Some(single_port_match) = captures.get(3) {
-                    if let Ok(port) = u16::from_str(single_port_match.as_str()) {
-                        ports.insert(port);
-                    }
-                } else if let (Some(start_port_match), Some(end_port_match)) =
-                    (captures.get(1), captures.get(2))
-                {
-                    if let (Ok(start_port), Ok(end_port)) = (
-                        u16::from_str(start_port_match.as_str()),
-                        u16::from_str(end_port_match.as_str()),
-                    ) {
-                        if start_port <= end_port { // Ensure valid range
-                            for port in start_port..=end_port {
-                                ports.insert(port);
-                            }
-                        }
-                    }
+        let port_protocol_pair: Vec<&str> = parts[1].split('/').collect();
+        if port_protocol_pair.len() == 2 {
+            let port_str = port_protocol_pair[0];
+            let protocol_str = port_protocol_pair[1];
+
+            if protocol_str.to_lowercase() == "tcp" {
+                if let Ok(port) = u16::from_str(port_str) {
+                    ports.insert(port);
                 }
             }
         }
     }
-    println!("Found {} distinct ports/port ranges from IANA CSV.", ports.len());
+    println!("Found {} distinct TCP ports from nmap-services file.", ports.len());
     Ok(ports)
 }
 
-fn fetch_remote_iana_csv() -> Result<String> {
-    println!("Fetching IANA port data from: {}", REMOTE_IANA_CSV_URL);
+fn fetch_remote_nmap_services() -> Result<String> {
+    println!("Fetching nmap-services data from: {}", REMOTE_NMAP_SERVICES_URL);
     
     let client = reqwest::blocking::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
         .build()
         .context("Failed to build reqwest client")?;
 
-    let response = client.get(REMOTE_IANA_CSV_URL)
+    let response = client.get(REMOTE_NMAP_SERVICES_URL)
         .send()
-        .context("Failed to send request to IANA URL")?;
+        .context("Failed to send request to nmap-services URL")?;
 
     if !response.status().is_success() {
         return Err(anyhow!(
-            "Failed to download IANA CSV. Status: {}",
+            "Failed to download nmap-services file. Status: {}",
             response.status()
         ));
     }
     response
         .text()
-        .context("Failed to read response text from IANA URL")
+        .context("Failed to read response text from nmap-services URL")
 }
 
-fn save_iana_csv(content: &str) -> Result<()> {
-    println!("Saving IANA port data to: {}", LOCAL_IANA_CSV_PATH);
-    fs::write(LOCAL_IANA_CSV_PATH, content)
-        .with_context(|| format!("Failed to write IANA CSV to '{}'", LOCAL_IANA_CSV_PATH))
+fn save_nmap_services_file(content: &str) -> Result<()> {
+    println!("Saving nmap-services data to: {}", LOCAL_NMAP_SERVICES_PATH);
+    fs::write(LOCAL_NMAP_SERVICES_PATH, content)
+        .with_context(|| format!("Failed to write nmap-services file to '{}'", LOCAL_NMAP_SERVICES_PATH))
 }
 
 fn get_locally_used_ports() -> Result<HashSet<u16>> {
@@ -161,33 +143,29 @@ fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
     if cli.update {
-        println!("Update flag set. Attempting to update IANA port assignments...");
-        match fetch_remote_iana_csv() {
-            Ok(csv_content) => {
-                match save_iana_csv(&csv_content) {
-                    Ok(_) => println!("Successfully updated local IANA CSV: {}", LOCAL_IANA_CSV_PATH),
+        println!("Update flag set. Attempting to update nmap-services file...");
+        match fetch_remote_nmap_services() {
+            Ok(file_content) => {
+                match save_nmap_services_file(&file_content) {
+                    Ok(_) => println!("Successfully updated local nmap-services file: {}", LOCAL_NMAP_SERVICES_PATH),
                     Err(e) => {
-                        eprintln!("Error saving updated IANA CSV: {}. Proceeding with existing local data if available.", e);
+                        eprintln!("Error saving updated nmap-services file: {}. Proceeding with existing local data if available.", e);
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Error fetching remote IANA CSV: {}. Proceeding with existing local data if available.", e);
+                eprintln!("Error fetching remote nmap-services file: {}. Proceeding with existing local data if available.", e);
             }
         }
     }
 
-    match read_local_iana_ports() {
-        Ok(iana_ports) => {
-            forbidden_ports.extend(iana_ports);
+    match read_local_nmap_services() {
+        Ok(nmap_ports) => {
+            forbidden_ports.extend(nmap_ports);
         }
         Err(e) => {
-            // If update was requested and failed, this error might be more critical.
-            // However, the original behavior was to warn and proceed.
-            eprintln!("Warning: Could not read or parse local IANA CSV: {}", e);
+            eprintln!("Warning: Could not read or parse local nmap-services file: {}", e);
             eprintln!("Proceeding with local ports only, but results might be less reliable.");
-            // If cli.update was true, we might want to be stricter here,
-            // but for now, we'll keep the original fallback behavior.
         }
     }
 

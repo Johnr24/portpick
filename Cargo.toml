@@ -1,5 +1,5 @@
 [package]
-name = "port_finder"
+name = "portpicker"
 version = "0.1.0"
 edition = "2021"
 

@@ -34,8 +34,7 @@ struct Cli {
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
 static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
-fn parse_services_content(content: &str, source_description: &str) -> Result<HashSet<u16>> {
-    println!("Parsing services data from {}...", source_description);
+fn parse_services_content(content: &str, _source_description: &str) -> Result<HashSet<u16>> {
     let mut ports = HashSet::new();
     for line in content.lines() {
         let trimmed_line = line.trim();
@@ -67,25 +66,25 @@ fn parse_services_content(content: &str, source_description: &str) -> Result<Has
             }
         }
     }
-    println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
+    // Removed: println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
     Ok(ports)
 }
 
 fn read_system_services_ports() -> Result<HashSet<u16>> {
-    println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
+    // Removed: println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
     let file_content = fs::read_to_string(SYSTEM_SERVICES_PATH)
         .with_context(|| format!("Failed to read system services file at '{}'", SYSTEM_SERVICES_PATH))?;
-    parse_services_content(&file_content, SYSTEM_SERVICES_PATH)
+    parse_services_content(&file_content, "system services file")
 }
 
 fn save_nmap_cache(content: &str) -> Result<()> {
-    println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
+    // Removed: println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
     fs::write(LOCAL_NMAP_CACHE_PATH, content)
         .with_context(|| format!("Failed to write Nmap services cache to '{}'", LOCAL_NMAP_CACHE_PATH))
 }
 
 fn fetch_remote_nmap_services() -> Result<String> {
-    println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
+    // Removed: println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
     
     let client = reqwest::blocking::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -108,7 +107,7 @@ fn fetch_remote_nmap_services() -> Result<String> {
 }
 
 fn get_locally_used_ports() -> Result<HashSet<u16>> {
-    println!("Fetching locally used TCP ports...");
+    // Removed: println!("Fetching locally used TCP ports...");
     let output = Command::new("lsof")
         .args(["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
         .output()
@@ -134,7 +133,7 @@ fn get_locally_used_ports() -> Result<HashSet<u16>> {
             }
         }
     }
-    println!("Found {} locally listening TCP ports.", ports.len());
+    // Removed: println!("Found {} locally listening TCP ports.", ports.len());
     Ok(ports)
 }
 
@@ -200,14 +199,14 @@ fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
     if cli.fetch_nmap {
-        println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
+        // Removed: println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
         match fetch_remote_nmap_services() {
             Ok(nmap_content) => {
                 // Attempt to save to cache, issue warning on failure but proceed
                 if let Err(e) = save_nmap_cache(&nmap_content) {
                     eprintln!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e);
                 } else {
-                    println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
+                    // Removed: println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
                 }
                 // Parse the fetched content
                 match parse_services_content(&nmap_content, "fetched Nmap services list") {
@@ -221,7 +220,7 @@ fn main() -> Result<()> {
         // Default: Try local cache first, then system services file
         match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
             Ok(cached_content) => {
-                println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
+                // Removed: println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
                 match parse_services_content(&cached_content, "cached Nmap services list") {
                     Ok(cached_ports) => forbidden_ports.extend(cached_ports),
                     Err(e) => {
@@ -238,7 +237,7 @@ fn main() -> Result<()> {
                 }
             }
             Err(_) => { // Cache not found or unreadable, try system services
-                println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
+                // Removed: println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
                 match read_system_services_ports() {
                     Ok(system_ports) => forbidden_ports.extend(system_ports),
                     Err(e_sys) => {
@@ -261,7 +260,7 @@ fn main() -> Result<()> {
         }
     }
     
-    println!("Total {} forbidden ports collected.", forbidden_ports.len());
+    // Removed: println!("Total {} forbidden ports collected.", forbidden_ports.len());
 
     if cli.number_of_ports == 0 {
         println!("\nNumber of ports requested is 0. No ports to find.");

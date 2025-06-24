@@ -24,6 +24,10 @@ struct Cli {
     /// Require the found ports to be a continuous block
     #[clap(short, long)]
     continuous: bool,
+
+    /// Output ports in Docker-compose format (e.g., 8080:)
+    #[clap(short, long)]
+    docker_format: bool,
 }
 
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
@@ -252,21 +256,36 @@ fn main() -> Result<()> {
             cli.number_of_ports, 
             if cli.continuous {"continuous "} else {""});
     } else if cli.continuous && available_ports.len() < cli.number_of_ports as usize {
-        println!("\nCould not find a continuous block of {} ports. Found {} available port(s) instead (non-continuous search might yield more):", cli.number_of_ports, available_ports.len());
+        // This case implies we couldn't find the full continuous block requested.
+        // The message should reflect that.
+        // If docker_format is true, we still print what was found in that format.
+        println!("\nCould not find a continuous block of {} ports. Found {} available port(s) instead:", cli.number_of_ports, available_ports.len());
         for port in available_ports {
-            println!("- {}", port);
+            if cli.docker_format {
+                println!("{}:", port);
+            } else {
+                println!("- {}", port);
+            }
         }
     } 
     else if !cli.continuous && available_ports.len() < cli.number_of_ports as usize {
         println!("\nFound {} out of {} requested available port(s):", available_ports.len(), cli.number_of_ports);
         for port in available_ports {
-            println!("- {}", port);
+            if cli.docker_format {
+                println!("{}:", port);
+            } else {
+                println!("- {}", port);
+            }
         }
     }
-    else {
+    else { // Found all requested ports
         println!("\nSuggested available port(s):");
         for port in available_ports {
-            println!("- {}", port);
+            if cli.docker_format {
+                println!("{}:", port);
+            } else {
+                println!("- {}", port);
+            }
         }
     }
 

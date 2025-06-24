@@ -2,13 +2,15 @@
 
 `portpick` is a command-line utility to help you find available network ports on your system. It can suggest one or more ports, optionally in a continuous block, and can format the output for Docker-compose.
 
-By default (if neither `--universal` nor `--host` is specified), `portpick` uses the system's `/etc/services` file to gather information about known ports. It also checks for locally listening ports using `lsof`.
+
 
 ## Usage
 
 ```bash
 portpick [OPTIONS]
 ```
+
+By default (if neither `--universal` nor `--host` is specified), `portpick` uses the system's `/etc/services`  file to gather information  about known ports. This is the -h option It also checks for locally listening ports using `lsof`.
 
 ## Options
 
@@ -78,7 +80,7 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
         1.  Directly uses the system's `/etc/services` file.
         2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
 2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine.
-3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and locally used ports. Services named "unknown" are ignored.
+3.  **Forbidden Ports:** Combines ports from the nmapservices file and using lsof on the system (Nmap/system services) and locally used ports. Services named "unknown" are ignored.
 4.  **Port Suggestion:**
     *   Searches for available ports, prioritizing the registered port range (1024-49151) before the dynamic/private port range (49152-65535).
     *   Well-known ports (0-1023) are avoided.

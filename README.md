@@ -18,6 +18,7 @@ By default (if neither `--universal` nor `--local` is specified), `portpick` use
 | `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |         |
 | `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |         |
 | `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       |         |
+| `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `lsof`) fails. May be less accurate. |         |
 | `--help`                  | `-h`  | Print help information.                                                                         |         |
 | `--version`               | `-V`  | Print version information.                                                                      |         |
 
@@ -75,8 +76,10 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
     *   If neither `--universal` nor `--local` is specified (default behavior):
         1.  Directly uses the system's `/etc/services` file.
         2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
-2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine.
-3.  **Forbidden Ports:** Combines ports from the nmapservices file and using lsof on the system (Nmap/system services) and locally used ports. Services named "unknown" are ignored.
+2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine. If this command fails:
+    *   Without `--force` (or `-f`): The program will exit with an error.
+    *   With `--force` (or `-f`): A warning is printed, and `portpick` proceeds without information about locally used ports (suggestions will be based only on service data).
+3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and, if successful, locally used ports. Services named "unknown" are ignored.
 4.  **Port Suggestion:**
     *   Searches for available ports, prioritizing the registered port range (1024-49151) before the dynamic/private port range (49152-65535).
     *   Well-known ports (0-1023) are avoided.

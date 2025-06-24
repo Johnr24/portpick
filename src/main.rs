@@ -43,6 +43,11 @@ struct Cli {
     /// Enable verbose output
     #[clap(short, long)]
     verbose: bool,
+
+    /// Force port suggestion even if local port checking (e.g., lsof) fails.
+    /// This may result in less accurate suggestions.
+    #[clap(short, long)]
+    force: bool,
 }
 
 // Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
@@ -180,9 +185,13 @@ fn main() -> Result<()> {
             forbidden_ports.extend(local_ports);
         }
         Err(e) => {
-            // If lsof fails, we can't reliably check local ports.
-            // It's safer to error out or provide a strong warning.
-            return Err(e.context("Failed to get locally used ports. Cannot reliably find an available port."));
+            if cli.force {
+                eprintln!("{}", format!("Warning: Failed to get locally used ports: {}. Proceeding with --force, but suggestions may be inaccurate.", e).yellow());
+                // Proceed with an empty set of local ports, relying only on service data
+            } else {
+                // If lsof fails and --force is not used, it's safer to error out.
+                return Err(e.context("Failed to get locally used ports. Cannot reliably find an available port. Use --force to attempt suggestion anyway."));
+            }
         }
     }
     

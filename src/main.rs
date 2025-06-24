@@ -121,16 +121,16 @@ fn get_locally_used_ports() -> Result<HashSet<u16>> {
 }
 
 fn find_available_port(forbidden_ports: &HashSet<u16>) -> Option<u16> {
-    // Prefer dynamic/private ports first (49152-65535)
-    for port in 49152..=65535 {
+    // Prefer registered ports first (1024-49151)
+    // Avoiding well-known ports (0-1023)
+    for port in 1024..=49151 {
         if !forbidden_ports.contains(&port) {
             return Some(port);
         }
     }
 
-    // Then try registered ports (1024-49151)
-    // Avoiding well-known ports (0-1023)
-    for port in 1024..=49151 {
+    // Then try dynamic/private ports (49152-65535)
+    for port in 49152..=65535 {
         if !forbidden_ports.contains(&port) {
             return Some(port);
         }

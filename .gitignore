@@ -21,6 +21,8 @@ target
 src/nmap-services.cache
 
 
+Cargo.lock
+
 # macos
 .DS_Store
 # General

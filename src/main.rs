@@ -9,11 +9,12 @@ use std::str::FromStr;
 
 const SYSTEM_SERVICES_PATH: &str = "/etc/services"; // Standard path for system services file
 const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services"; // URL for official Nmap services
+const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the local Nmap services cache
 
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    /// Fetch and use the official Nmap services list from the internet for this run
+    /// Fetch the official Nmap services list, use it for this run, and update the local cache
     #[clap(long)]
     fetch_nmap: bool,
 
@@ -77,8 +78,14 @@ fn read_system_services_ports() -> Result<HashSet<u16>> {
     parse_services_content(&file_content, SYSTEM_SERVICES_PATH)
 }
 
+fn save_nmap_cache(content: &str) -> Result<()> {
+    println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
+    fs::write(LOCAL_NMAP_CACHE_PATH, content)
+        .with_context(|| format!("Failed to write Nmap services cache to '{}'", LOCAL_NMAP_CACHE_PATH))
+}
+
 fn fetch_remote_nmap_services() -> Result<String> {
-    println!("Fetching nmap-services data from: {}", REMOTE_NMAP_SERVICES_URL);
+    println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
     
     let client = reqwest::blocking::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36")
@@ -193,32 +200,52 @@ fn main() -> Result<()> {
     let mut forbidden_ports = HashSet::new();
 
     if cli.fetch_nmap {
-        println!("Fetch Nmap services flag set. Attempting to fetch and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
+        println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
         match fetch_remote_nmap_services() {
             Ok(nmap_content) => {
-                match parse_services_content(&nmap_content, "remote Nmap services list") {
+                // Attempt to save to cache, issue warning on failure but proceed
+                if let Err(e) = save_nmap_cache(&nmap_content) {
+                    eprintln!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e);
+                } else {
+                    println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
+                }
+                // Parse the fetched content
+                match parse_services_content(&nmap_content, "fetched Nmap services list") {
                     Ok(nmap_ports) => forbidden_ports.extend(nmap_ports),
+                    Err(e) => return Err(e.context("Failed to parse fetched Nmap services content.")),
+                }
+            }
+            Err(e) => return Err(e.context("Failed to fetch remote Nmap services as requested by --fetch-nmap flag.")),
+        }
+    } else {
+        // Default: Try local cache first, then system services file
+        match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
+            Ok(cached_content) => {
+                println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
+                match parse_services_content(&cached_content, "cached Nmap services list") {
+                    Ok(cached_ports) => forbidden_ports.extend(cached_ports),
                     Err(e) => {
-                        // Critical if --fetch-nmap was used.
-                        return Err(e.context("Failed to parse fetched Nmap services content."));
+                        eprintln!("Warning: Failed to parse cached Nmap services from {}: {}. Falling back to system services file.", LOCAL_NMAP_CACHE_PATH, e);
+                        // Fallback to system services
+                        match read_system_services_ports() {
+                            Ok(system_ports) => forbidden_ports.extend(system_ports),
+                            Err(e_sys) => {
+                                eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
+                                eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
+                            }
+                        }
                     }
                 }
             }
-            Err(e) => {
-                // Critical if --fetch-nmap was used.
-                return Err(e.context("Failed to fetch remote Nmap services as requested by --fetch-nmap flag."));
-            }
-        }
-    } else {
-        // Default: use system services file
-        match read_system_services_ports() {
-            Ok(system_ports) => {
-                forbidden_ports.extend(system_ports);
-            }
-            Err(e) => {
-                eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e);
-                eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
-                // Not returning an error here, just proceeding with fewer forbidden ports.
+            Err(_) => { // Cache not found or unreadable, try system services
+                println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
+                match read_system_services_ports() {
+                    Ok(system_ports) => forbidden_ports.extend(system_ports),
+                    Err(e_sys) => {
+                        eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
+                        eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
+                    }
+                }
             }
         }
     }

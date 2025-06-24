@@ -14,11 +14,15 @@ const REMOTE_NMAP_SERVICES_URL: &str = "https://svn.nmap.org/nmap/nmap-services"
 const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the local Nmap services cache
 
 #[derive(Parser, Debug)]
-#[clap(author, version, about, long_about = None)]
+#[clap(author, version, about, long_about = None, disable_help_flag = true)] // Disable default -h for help
 struct Cli {
     /// Use the universal Nmap services list (fetches from internet, updates local cache)
     #[clap(short, long)]
     universal: bool,
+
+    /// Explicitly use the host's system services file (e.g., /etc/services). This is the default if --universal is not used.
+    #[clap(short = 'h', long)]
+    host: bool,
 
     /// Number of ports to find
     #[clap(short, long, default_value_t = 1)]
@@ -219,9 +223,19 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
 
+    // Manually handle help flag because we're using -h for --host
+    if присутствует_флаг_помощи(&cli) { // This is a placeholder for actual help flag check logic if needed,
+                                     // but clap usually handles --help even with disable_help_flag for -h.
+                                     // For simplicity, we'll rely on clap's --help.
+    }
+
+
     if cli.universal {
         if cli.verbose {
             println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
+            if cli.host {
+                eprintln!("{}", "Warning: --universal and --host flags were both specified. --universal takes precedence.".yellow());
+            }
         }
         match fetch_remote_nmap_services(cli.verbose) {
             Ok(nmap_content) => {

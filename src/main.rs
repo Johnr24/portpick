@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use colored::*;
 use once_cell::sync::Lazy;
+use rand::seq::SliceRandom; // For randomly selecting a color
 use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
@@ -309,7 +310,7 @@ fn main() -> Result<()> {
 
     let available_ports = find_available_ports(&forbidden_ports, cli.number_of_ports, cli.continuous);
 
-    let rainbow_colors: [Color; 6] = [
+    const PORT_COLORS: [Color; 6] = [
         Color::Red,
         Color::Yellow,
         Color::Green,
@@ -317,7 +318,8 @@ fn main() -> Result<()> {
         Color::Blue,
         Color::Magenta,
     ];
-    let mut color_index = 0;
+    let mut rng = rand::thread_rng();
+    let selected_port_color = PORT_COLORS.choose(&mut rng).unwrap_or(&Color::White); // Default to white if selection fails
 
     if available_ports.is_empty() {
         println!("{}", format!("\nCould not find {} {}available port(s) in the checked ranges.", 
@@ -327,8 +329,7 @@ fn main() -> Result<()> {
         println!("{}", format!("\nCould not find a continuous block of {} ports. Found {} available port(s) instead:", cli.number_of_ports, available_ports.len()).yellow());
         for port in available_ports {
             let port_str = format!("{}", port);
-            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
-            color_index += 1;
+            let colored_port = port_str.color(*selected_port_color);
             if cli.docker_format {
                 println!("{}:", colored_port);
             } else {
@@ -340,8 +341,7 @@ fn main() -> Result<()> {
         println!("{}", format!("\nFound {} out of {} requested available port(s):", available_ports.len(), cli.number_of_ports).yellow());
         for port in available_ports {
             let port_str = format!("{}", port);
-            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
-            color_index += 1;
+            let colored_port = port_str.color(*selected_port_color);
             if cli.docker_format {
                 println!("{}:", colored_port);
             } else {
@@ -353,8 +353,7 @@ fn main() -> Result<()> {
         println!("{}", "\nSuggested available port(s):".green());
         for port in available_ports {
             let port_str = format!("{}", port);
-            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
-            color_index += 1;
+            let colored_port = port_str.color(*selected_port_color);
             if cli.docker_format {
                 println!("{}:", colored_port);
             } else {

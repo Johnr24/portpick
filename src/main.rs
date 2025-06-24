@@ -16,9 +16,9 @@ const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the l
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Cli {
-    /// Fetch the official Nmap services list, use it for this run, and update the local cache
-    #[clap(long)]
-    fetch_nmap: bool,
+    /// Use the universal Nmap services list (fetches from internet, updates local cache)
+    #[clap(short, long)]
+    universal: bool,
 
     /// Number of ports to find
     #[clap(short, long, default_value_t = 1)]
@@ -219,9 +219,9 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
 
-    if cli.fetch_nmap {
+    if cli.universal {
         if cli.verbose {
-            println!("{}", format!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
+            println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
         }
         match fetch_remote_nmap_services(cli.verbose) {
             Ok(nmap_content) => {
@@ -239,7 +239,7 @@ fn main() -> Result<()> {
                     Err(e) => return Err(e.context("Failed to parse fetched Nmap services content.")),
                 }
             }
-            Err(e) => return Err(e.context("Failed to fetch remote Nmap services as requested by --fetch-nmap flag.")),
+            Err(e) => return Err(e.context("Failed to fetch remote Nmap services as requested by --universal flag.")),
         }
     } else {
         // Default: Try local cache first, then system services file

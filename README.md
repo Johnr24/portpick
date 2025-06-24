@@ -14,7 +14,7 @@ portpick [OPTIONS]
 
 | Flag                      | Short | Description                                                                                     | Default |
 |---------------------------|-------|-------------------------------------------------------------------------------------------------|---------|
-| `--fetch-nmap`            |       | Fetch the official Nmap services list, use it for this run, and update the local cache.         |         |
+| `--universal`             | `-u`  | Use the universal Nmap services list (fetches from internet, updates local cache).              |         |
 | `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`     |
 | `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |         |
 | `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |         |
@@ -39,9 +39,13 @@ Find 2 continuous ports and output in Docker format:
 portpick -n 2 -c -d
 ```
 
-Find a port using the latest Nmap services list (fetches and caches it) with verbose output:
+Find a port using the universal Nmap services list (fetches and caches it) with verbose output:
 ```bash
-portpick --fetch-nmap -v
+portpick -u -v
+```
+Alternatively:
+```bash
+portpick --universal -v
 ```
 
 ## Installation
@@ -67,8 +71,8 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 ## How it Works
 
 1.  **Port Data Source Priority:**
-    *   If `--fetch-nmap` is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`.
-    *   If `--fetch-nmap` is NOT used:
+    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`.
+    *   If `--universal` (or `-u`) is NOT used:
         1.  Tries to read from `src/nmap-services.cache`.
         2.  If cache is not found or fails to parse, falls back to `/etc/services`.
         3.  If `/etc/services` also fails, issues a warning.

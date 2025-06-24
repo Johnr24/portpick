@@ -1,5 +1,6 @@
-use anyhow::{Context, Result}; // Removed 'anyhow' type alias to fix unused import warning
+use anyhow::{Context, Result};
 use clap::Parser;
+use colored::*;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use std::collections::HashSet;
@@ -40,7 +41,7 @@ static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LIST
 
 fn parse_services_content(content: &str, source_description: &str, verbose: bool) -> Result<HashSet<u16>> {
     if verbose {
-        println!("Parsing services data from {}...", source_description);
+        println!("{}", format!("Parsing services data from {}...", source_description).cyan());
     }
     let mut ports = HashSet::new();
     for line in content.lines() {
@@ -74,14 +75,14 @@ fn parse_services_content(content: &str, source_description: &str, verbose: bool
         }
     }
     if verbose {
-        println!("Found {} distinct TCP ports from {}.", ports.len(), source_description);
+        println!("{}", format!("Found {} distinct TCP ports from {}.", ports.len(), source_description).cyan());
     }
     Ok(ports)
 }
 
 fn read_system_services_ports(verbose: bool) -> Result<HashSet<u16>> {
     if verbose {
-        println!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH);
+        println!("{}", format!("Reading port data from system services file: {}", SYSTEM_SERVICES_PATH).cyan());
     }
     let file_content = fs::read_to_string(SYSTEM_SERVICES_PATH)
         .with_context(|| format!("Failed to read system services file at '{}'", SYSTEM_SERVICES_PATH))?;
@@ -90,7 +91,7 @@ fn read_system_services_ports(verbose: bool) -> Result<HashSet<u16>> {
 
 fn save_nmap_cache(content: &str, verbose: bool) -> Result<()> {
     if verbose {
-        println!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH);
+        println!("{}", format!("Caching Nmap services data to: {}", LOCAL_NMAP_CACHE_PATH).cyan());
     }
     fs::write(LOCAL_NMAP_CACHE_PATH, content)
         .with_context(|| format!("Failed to write Nmap services cache to '{}'", LOCAL_NMAP_CACHE_PATH))
@@ -98,7 +99,7 @@ fn save_nmap_cache(content: &str, verbose: bool) -> Result<()> {
 
 fn fetch_remote_nmap_services(verbose: bool) -> Result<String> {
     if verbose {
-        println!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL);
+        println!("{}", format!("Fetching Nmap services data from: {}", REMOTE_NMAP_SERVICES_URL).cyan());
     }
     
     let client = reqwest::blocking::Client::builder()
@@ -123,7 +124,7 @@ fn fetch_remote_nmap_services(verbose: bool) -> Result<String> {
 
 fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
     if verbose {
-        println!("Fetching locally used TCP ports...");
+        println!("{}", "Fetching locally used TCP ports...".cyan());
     }
     let output = Command::new("lsof")
         .args(["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
@@ -151,7 +152,7 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
         }
     }
     if verbose {
-        println!("Found {} locally listening TCP ports.", ports.len());
+        println!("{}", format!("Found {} locally listening TCP ports.", ports.len()).cyan());
     }
     Ok(ports)
 }
@@ -219,16 +220,16 @@ fn main() -> Result<()> {
 
     if cli.fetch_nmap {
         if cli.verbose {
-            println!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL);
+            println!("{}", format!("Fetch Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
         }
         match fetch_remote_nmap_services(cli.verbose) {
             Ok(nmap_content) => {
                 // Attempt to save to cache, issue warning on failure but proceed
                 if let Err(e) = save_nmap_cache(&nmap_content, cli.verbose) {
-                    eprintln!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e);
+                    eprintln!("{}", format!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e).yellow());
                 } else {
                     if cli.verbose {
-                        println!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH);
+                        println!("{}", format!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH).green());
                     }
                 }
                 // Parse the fetched content
@@ -244,18 +245,18 @@ fn main() -> Result<()> {
         match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
             Ok(cached_content) => {
                 if cli.verbose {
-                    println!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH);
+                    println!("{}", format!("Using cached Nmap services from {}", LOCAL_NMAP_CACHE_PATH).cyan());
                 }
                 match parse_services_content(&cached_content, "cached Nmap services list", cli.verbose) {
                     Ok(cached_ports) => forbidden_ports.extend(cached_ports),
                     Err(e) => {
-                        eprintln!("Warning: Failed to parse cached Nmap services from {}: {}. Falling back to system services file.", LOCAL_NMAP_CACHE_PATH, e);
+                        eprintln!("{}", format!("Warning: Failed to parse cached Nmap services from {}: {}. Falling back to system services file.", LOCAL_NMAP_CACHE_PATH, e).yellow());
                         // Fallback to system services
                         match read_system_services_ports(cli.verbose) {
                             Ok(system_ports) => forbidden_ports.extend(system_ports),
                             Err(e_sys) => {
-                                eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
-                                eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
+                                eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys).yellow());
+                                eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
                             }
                         }
                     }
@@ -263,13 +264,13 @@ fn main() -> Result<()> {
             }
             Err(_) => { // Cache not found or unreadable, try system services
                 if cli.verbose {
-                    println!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH);
+                    println!("{}", format!("Local Nmap cache not found or unreadable at {}. Attempting to use system services file: {}", LOCAL_NMAP_CACHE_PATH, SYSTEM_SERVICES_PATH).cyan());
                 }
                 match read_system_services_ports(cli.verbose) {
                     Ok(system_ports) => forbidden_ports.extend(system_ports),
                     Err(e_sys) => {
-                        eprintln!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys);
-                        eprintln!("Proceeding with locally used ports only. Port suggestions might be less reliable.");
+                        eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}", SYSTEM_SERVICES_PATH, e_sys).yellow());
+                        eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
                     }
                 }
             }
@@ -288,11 +289,11 @@ fn main() -> Result<()> {
     }
     
     if cli.verbose {
-        println!("Total {} forbidden ports collected.", forbidden_ports.len());
+        println!("{}", format!("Total {} forbidden ports collected.", forbidden_ports.len()).cyan());
     }
 
     if cli.number_of_ports == 0 {
-        println!("\nNumber of ports requested is 0. No ports to find.");
+        println!("{}", "\nNumber of ports requested is 0. No ports to find.".yellow());
         return Ok(());
     }
     
@@ -303,46 +304,61 @@ fn main() -> Result<()> {
     const TOTAL_SEARCHABLE_PORTS: u16 = (49151u16 - 1024u16 + 1u16) + (65535u16 - 49152u16 + 1u16);
     if cli.continuous && cli.number_of_ports > 1 && TOTAL_SEARCHABLE_PORTS < cli.number_of_ports {
         // Basic check if requested number of continuous ports can even exist in the searched ranges
-        println!("\nWarning: Requested number of continuous ports ({}) is very large and might not be possible to find as it exceeds the total number of searchable ports ({}).", cli.number_of_ports, TOTAL_SEARCHABLE_PORTS);
+        println!("{}", format!("\nWarning: Requested number of continuous ports ({}) is very large and might not be possible to find as it exceeds the total number of searchable ports ({}).", cli.number_of_ports, TOTAL_SEARCHABLE_PORTS).yellow());
     }
-
 
     let available_ports = find_available_ports(&forbidden_ports, cli.number_of_ports, cli.continuous);
 
+    let rainbow_colors: [Color; 6] = [
+        Color::Red,
+        Color::Yellow,
+        Color::Green,
+        Color::Cyan,
+        Color::Blue,
+        Color::Magenta,
+    ];
+    let mut color_index = 0;
+
     if available_ports.is_empty() {
-        println!("\nCould not find {} {}available port(s) in the checked ranges.", 
+        println!("{}", format!("\nCould not find {} {}available port(s) in the checked ranges.", 
             cli.number_of_ports, 
-            if cli.continuous {"continuous "} else {""});
+            if cli.continuous {"continuous "} else {""}).red());
     } else if cli.continuous && available_ports.len() < cli.number_of_ports as usize {
-        // This case implies we couldn't find the full continuous block requested.
-        // The message should reflect that.
-        // If docker_format is true, we still print what was found in that format.
-        println!("\nCould not find a continuous block of {} ports. Found {} available port(s) instead:", cli.number_of_ports, available_ports.len());
+        println!("{}", format!("\nCould not find a continuous block of {} ports. Found {} available port(s) instead:", cli.number_of_ports, available_ports.len()).yellow());
         for port in available_ports {
+            let port_str = format!("{}", port);
+            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
+            color_index += 1;
             if cli.docker_format {
-                println!("{}:", port);
+                println!("{}:", colored_port);
             } else {
-                println!("- {}", port);
+                println!("- {}", colored_port);
             }
         }
     } 
     else if !cli.continuous && available_ports.len() < cli.number_of_ports as usize {
-        println!("\nFound {} out of {} requested available port(s):", available_ports.len(), cli.number_of_ports);
+        println!("{}", format!("\nFound {} out of {} requested available port(s):", available_ports.len(), cli.number_of_ports).yellow());
         for port in available_ports {
+            let port_str = format!("{}", port);
+            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
+            color_index += 1;
             if cli.docker_format {
-                println!("{}:", port);
+                println!("{}:", colored_port);
             } else {
-                println!("- {}", port);
+                println!("- {}", colored_port);
             }
         }
     }
     else { // Found all requested ports
-        println!("\nSuggested available port(s):");
+        println!("{}", "\nSuggested available port(s):".green());
         for port in available_ports {
+            let port_str = format!("{}", port);
+            let colored_port = port_str.color(rainbow_colors[color_index % rainbow_colors.len()]);
+            color_index += 1;
             if cli.docker_format {
-                println!("{}:", port);
+                println!("{}:", colored_port);
             } else {
-                println!("- {}", port);
+                println!("- {}", colored_port);
             }
         }
     }

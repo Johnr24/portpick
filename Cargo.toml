@@ -9,5 +9,6 @@ regex = "1.10.4"
 once_cell = "1.19.0"
 anyhow = "1.0.82"
 clap = { version = "4.5.4", features = ["derive"] }
+colored = "2.1.0"
 # For macOS, lsof is usually available. For other OS, different commands/libraries might be needed.
 # This example will focus on macOS as per user's system info.

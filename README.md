@@ -59,9 +59,8 @@ cargo install --path .
 **Directly from GitHub:**
 Once the repository is public on GitHub, you can install it directly using:
 ```bash
-cargo install --git https://github.com/your-username/portpick.git
+cargo install --git https://github.com/Johnr24/portpick.git
 ```
-Replace `https://github.com/your-username/portpick.git` with the actual URL of your GitHub repository.
 
 This will place the `portpick` binary in your cargo binary directory (usually `~/.cargo/bin/`), which should be in your `PATH`.
 
@@ -93,4 +92,4 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
     cargo build --release
     ```
     The binary will be located at `target/release/portpick`.
-```
+    ```

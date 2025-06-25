@@ -129,12 +129,13 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
         "-a", "127.0.0.1", // Target localhost using the -a flag
         "--ports",
         "1-65535",      // Scan all standard port ranges
-        "--no-nmap",    // We only want RustScan's port discovery
         "--accessible", // Output only open ports, one port per line
         "-b",
         "1000", // Batch size for scanning
         "-t",
         "1500", // Timeout per port in milliseconds
+        "--",           // Separator: arguments after this are for the command
+        "/bin/true",    // Command to run instead of Nmap (does nothing)
     ];
 
     if verbose {

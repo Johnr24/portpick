@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use colored::*;
 use once_cell::sync::Lazy;
-use rand::seq::SliceRandom; // For randomly selecting a color
+use rand::prelude::IndexedRandom; // For the .choose() method on slices
 use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
@@ -224,7 +224,7 @@ fn main() -> Result<()> {
         Color::Blue,
         Color::Magenta,
     ];
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let selected_port_color = PORT_COLORS.choose(&mut rng).unwrap_or(&Color::White); // Default to white if selection fails
 
     if available_ports.is_empty() {

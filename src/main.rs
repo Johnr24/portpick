@@ -1,9 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use colored::*;
-use once_cell::sync::Lazy;
 use rand::prelude::IndexedRandom; // For the .choose() method on slices
-use regex::Regex;
 use std::collections::HashSet;
 use std::fs;
 use std::process::Command;
@@ -49,9 +47,6 @@ struct Cli {
     #[clap(short, long)]
     force: bool,
 }
-
-// Regex to capture listening ports from lsof output (e.g., *:80, 127.0.0.1:8080)
-static LSOF_PORT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r":(\d{1,5})\s*\(LISTEN\)$").unwrap());
 
 // parse_services_content moved to lib.rs
 
@@ -99,17 +94,35 @@ fn fetch_remote_nmap_services(verbose: bool) -> Result<String> {
 
 fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
     if verbose {
-        println!("{}", "Fetching locally used TCP ports...".cyan());
+        println!("{}", "Scanning for locally used TCP ports using RustScan...".cyan());
     }
-    let output = Command::new("lsof")
-        .args(["-iTCP", "-sTCP:LISTEN", "-P", "-n"])
+    // Consider making port range, batch size, and timeout configurable if needed.
+    let rustscan_args = [
+        "127.0.0.1",    // Target localhost
+        "--ports",
+        "1-65535",      // Scan all standard port ranges
+        "--no-nmap",    // We only want RustScan's port discovery
+        "--accessible", // Output only open ports, one port per line
+        "-b", "1000",   // Batch size for scanning
+        "-t", "1500",   // Timeout per port in milliseconds
+    ];
+
+    if verbose {
+        println!("{}", format!("Executing: rustscan {}", rustscan_args.join(" ")).dimmed());
+    }
+
+    let output = Command::new("rustscan")
+        .args(&rustscan_args)
         .output()
-        .context("Failed to execute lsof command. Make sure lsof is installed and in PATH.")?;
+        .context("Failed to execute rustscan command. Make sure rustscan is installed and in PATH.")?;
 
     if !output.status.success() {
+        // RustScan might provide partial results or specific error info.
+        // For now, we treat any non-zero exit status as a failure.
         return Err(anyhow::anyhow!(
-            "lsof command failed with status: {}\nStderr: {}",
+            "rustscan command failed with status: {}.\nStdout: {}\nStderr: {}",
             output.status,
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         ));
     }
@@ -118,16 +131,25 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
     let mut ports = HashSet::new();
 
     for line in output_str.lines() {
-        if let Some(captures) = LSOF_PORT_RE.captures(line) {
-            if let Some(port_match) = captures.get(1) {
-                if let Ok(port) = u16::from_str(port_match.as_str()) {
-                    ports.insert(port);
+        let trimmed_line = line.trim();
+        if trimmed_line.is_empty() {
+            continue; // Skip empty lines
+        }
+        match u16::from_str(trimmed_line) {
+            Ok(port) => {
+                ports.insert(port);
+            }
+            Err(_) => {
+                if verbose {
+                    // Log if a line from rustscan output couldn't be parsed as a port.
+                    eprintln!("{}", format!("Warning: Could not parse line from rustscan output as port: '{}'", trimmed_line).yellow());
                 }
             }
         }
     }
+
     if verbose {
-        println!("{}", format!("Found {} locally listening TCP ports.", ports.len()).cyan());
+        println!("{}", format!("RustScan found {} locally open TCP ports.", ports.len()).cyan());
     }
     Ok(ports)
 }

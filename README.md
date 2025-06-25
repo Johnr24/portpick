@@ -45,6 +45,7 @@ portpick --source nmap -v
 ```
 
 Find a port on a remote host `example.com` using universal nmap services for known port definitions:
+```bash
 portpick -a example.com -s nmap
 ```
 

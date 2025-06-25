@@ -20,4 +20,3 @@ predicates = "3.0"
 
 [features]
 default = []
-# ci_skip_lsof_tests = [] # This line is removed or the feature is removed if it's the only one

@@ -13,7 +13,7 @@ By default, `portpick` uses the system's `/etc/services` file (equivalent to `--
 | Flag                      | Short | Description                                                                                     | Default    |
 |---------------------------|-------|-------------------------------------------------------------------------------------------------|------------|
 | `--address <ADDRESS>`     | `-a`  | Target address for RustScan (e.g., `127.0.0.1`, `localhost`, `example.com`).                    | `127.0.0.1`|
-| `--source <SOURCE>`       | `-s`  | Source for known service ports. Possible values: `system`, `nmap`, `cache`.                     | `system`   |
+| `--source <SOURCE>`       | `-s`  | Source for known service ports.<ul><li>`system` (default): Uses local system's services file (e.g., `/etc/services`); fast, no network, may be less current.</li><li>`nmap`: Fetches latest services list from Nmap's site; most current, requires internet, caches locally.</li><li>`cache`: Uses locally cached Nmap services list; fast, comprehensive if cache is fresh, can be outdated.</li></ul> | `system`   |
 | `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`        |
 | `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               | `false`    |
 | `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          | `false`    |
@@ -71,10 +71,7 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 
 ## How it Works
 
-1.  **Port Data Source (`--source` flag):** This flag determines where `portpick` gets its initial list of known TCP services and their associated port numbers.
-    *   `system` (default): Uses the local system's services file (e.g., `/etc/services`); fast, no network needed, but may be less current.
-    *   `nmap`: Fetches the latest services list from Nmap's official site; most current, requires internet, and caches locally.
-    *   `cache`: Uses the locally cached Nmap services list from a previous `nmap` source run; fast, uses comprehensive data, but can be outdated.
+1.  **Port Data Source (`--source` flag):** This flag determines where `portpick` gets its initial list of known TCP services and their associated port numbers. (See table above for details on `system`, `nmap`, and `cache` options).
 2.  **Locally Used Ports (`--address` flag):** Uses `rustscan` to find currently listening TCP ports on the target specified by `--address` (defaults to `127.0.0.1`). A command similar to `rustscan -a <target_address> --range 1-65535 --accessible -b 1000 -t 1500 -- /bin/true` is executed. `rustscan` must be installed and in the system's PATH. If this command fails:
     *   Without `--force` (or `-f`): The program will exit with an error.
     *   With `--force` (or `-f`): A warning is printed, and `portpick` proceeds without information about locally used ports (suggestions will be based only on service data).

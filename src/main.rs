@@ -138,6 +138,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let mut forbidden_ports = HashSet::new();
 
+    if cli.number_of_ports == 0 {
+        println!("{}", "\nNumber of ports requested is 0. No ports to find.".yellow());
+        return Ok(());
+    }
+
     if cli.universal {
         if cli.verbose {
             println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
@@ -199,11 +204,6 @@ fn main() -> Result<()> {
         println!("{}", format!("Total {} forbidden ports collected.", forbidden_ports.len()).cyan());
     }
 
-    if cli.number_of_ports == 0 {
-        println!("{}", "\nNumber of ports requested is 0. No ports to find.".yellow());
-        return Ok(());
-    }
-    
     // Calculate total number of ports in the search ranges to check against requested number of continuous ports.
     // (1024..=49151) -> 49151 - 1024 + 1 = 48128 ports
     // (49152..=65535) -> 65535 - 49152 + 1 = 16384 ports

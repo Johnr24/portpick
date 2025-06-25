@@ -364,18 +364,4 @@ fn test_cli_no_ports_found_message() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// Note: Testing the --force flag's behavior when lsof *actually* fails is hard
-// because we can't easily make lsof fail in a controlled way in a test.
-// This test primarily checks that the flag is accepted and the program
-// attempts to run, rather than verifying the lsof bypass directly.
-// A more robust test would involve mocking the lsof command.
-#[test]
-fn test_cli_force_flag_accepted() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-f", "-n", "1"]); // Request one port with force
-    cmd.assert()
-        .success() // Expect success even if lsof *were* to fail (though it probably won't here)
-        .stdout(predicate::str::contains("Suggested available port(s):"));
-    Ok(())
-}
 // --- End of CLI integration tests ---

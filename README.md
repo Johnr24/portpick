@@ -82,7 +82,7 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and, if successful, locally used ports. Services named "unknown" are ignored.
 4.  **Port Suggestion:**
     *   Searches for available ports, prioritizing the registered port range (1024-49151) before the dynamic/private port range (49152-65535).
-    *   Well-known ports (0-1023) are avoided.
+    *   Privileged ports (0-1023) are avoided.
     *   If `-c` or `--continuous` is specified, it looks for a continuous block of ports.
 5.  **Output:**
     *   Prints suggested ports.

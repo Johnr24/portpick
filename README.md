@@ -6,17 +6,17 @@
 portpick [OPTIONS]
 ```
 
-By default (if neither `--universal` nor `--local` is specified), `portpick` uses the system's `/etc/services` file to gather information about known ports. It also checks for locally listening ports using `rustscan`.
+By default, `portpick` uses the system's `/etc/services` file (equivalent to `--source system`) to gather information about known ports. It also checks for locally listening ports on `127.0.0.1` (equivalent to `--address 127.0.0.1`) using `rustscan`.
 
 ## Options
 
-| Flag                      | Short | Description                                                                                     | Default |
-|---------------------------|-------|-------------------------------------------------------------------------------------------------|---------|
-| `--universal`             | `-u`  | Use the universal Nmap services list (fetches from internet, updates local cache).              |         |
-| `--local`                 | `-l`  | Explicitly use the local host's system services file (e.g., `/etc/services`). This is the default behavior if `--universal` is not specified. |         |
-| `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`     |
-| `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |         |
-| `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |         |
+| Flag                      | Short | Description                                                                                     | Default    |
+|---------------------------|-------|-------------------------------------------------------------------------------------------------|------------|
+| `--address <ADDRESS>`     | `-a`  | Target address for RustScan (e.g., `127.0.0.1`, `localhost`, `example.com`).                    | `127.0.0.1`|
+| `--source <SOURCE>`       | `-s`  | Source for known service ports. Possible values: `system`, `nmap`, `cache`.                     | `system`   |
+| `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`        |
+| `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |            |
+| `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |            |
 | `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       |         |
 | `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `rustscan`) fails. May be less accurate. |         |
 | `--help`                  | `-h`  | Print help information.                                                                         |         |
@@ -39,13 +39,14 @@ Find 2 continuous ports and output in Docker format:
 portpick -n 2 -c -d
 ```
 
-Find a port using the universal Nmap services list (fetches and caches it) with verbose output:
+Find a port using the Nmap services list (fetches and caches it) with verbose output, scanning localhost:
 ```bash
-portpick -u -v
+portpick --source nmap -v
 ```
-Alternatively:
+
+Find a port on a remote host `example.com` using system services for known port definitions:
 ```bash
-portpick --universal -v
+portpick --address example.com --source system
 ```
 
 ## Installation
@@ -70,13 +71,11 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 
 ## How it Works
 
-1.  **Port Data Source Priority:**
-    *   If `--universal` (or `-u`) is used: Fetches from `https://svn.nmap.org/nmap/nmap-services`, uses this data, and caches it to `src/nmap-services.cache`. This option takes precedence if `--local` is also specified.
-    *   If `--local` (or `-l`) is used (and `--universal` is not): Explicitly uses the system's `/etc/services` file.
-    *   If neither `--universal` nor `--local` is specified (default behavior):
-        1.  Directly uses the system's `/etc/services` file.
-        2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
-2.  **Locally Used Ports:** Uses `rustscan` (specifically, a command similar to `rustscan -a 127.0.0.1 --range 1-65535 --accessible -b 1000 -t 1500 -- /bin/true`) to find currently listening TCP ports on the local machine. `rustscan` must be installed and in the system's PATH. If this command fails:
+1.  **Port Data Source (`--source` flag):**
+    *   `system` (default): Uses the local system's services file (e.g., `/etc/services`). If reading or parsing this file fails, a warning is issued, and `portpick` may proceed with only locally listening ports if any can be determined.
+    *   `nmap`: Fetches the services list from `https://svn.nmap.org/nmap/nmap-services`. This data is used for the current run and also cached locally to `src/nmap-services.cache`.
+    *   `cache`: Uses the services list from the local cache file (`src/nmap-services.cache`). If the cache file is not found or is unreadable, a warning is issued, and `portpick` falls back to using the `system` source.
+2.  **Locally Used Ports (`--address` flag):** Uses `rustscan` to find currently listening TCP ports on the target specified by `--address` (defaults to `127.0.0.1`). A command similar to `rustscan -a <target_address> --range 1-65535 --accessible -b 1000 -t 1500 -- /bin/true` is executed. `rustscan` must be installed and in the system's PATH. If this command fails:
     *   Without `--force` (or `-f`): The program will exit with an error.
     *   With `--force` (or `-f`): A warning is printed, and `portpick` proceeds without information about locally used ports (suggestions will be based only on service data).
 3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and, if successful, locally used ports. Services named "unknown" are ignored.

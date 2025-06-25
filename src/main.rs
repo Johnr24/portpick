@@ -17,13 +17,13 @@ const LOCAL_NMAP_CACHE_PATH: &str = "src/nmap-services.cache"; // Path for the l
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)] // -h will now default to help
 struct Cli {
-    /// Use the universal Nmap services list (fetches from internet, updates local cache)
-    #[clap(short, long)]
-    universal: bool,
+    /// Target address for RustScan to scan (e.g., 127.0.0.1, localhost, example.com)
+    #[clap(short = 'a', long)]
+    address: Option<String>,
 
-    /// Explicitly use the local host's system services file (e.g., /etc/services). This is the default if --universal is not used.
-    #[clap(short = 'l', long)]
-    local: bool,
+    /// Source for the list of known service ports [possible values: system, nmap, cache]
+    #[clap(short = 's', long, default_value = "system")]
+    source: String,
 
     /// Number of ports to find
     #[clap(short, long, default_value_t = 1)]
@@ -117,16 +117,17 @@ fn fetch_remote_nmap_services(verbose: bool) -> Result<String> {
         .context("Failed to read response text from nmap-services URL")
 }
 
-fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
-    if verbose {
+fn get_locally_used_ports(cli: &Cli) -> Result<HashSet<u16>> {
+    if cli.verbose {
         println!(
             "{}",
             "Scanning for locally used TCP ports using RustScan...".cyan()
         );
     }
     // Consider making port range, batch size, and timeout configurable if needed.
+    let target_address = cli.address.as_deref().unwrap_or("127.0.0.1");
     let rustscan_args = [
-        "-a", "127.0.0.1", // Target localhost using the -a flag
+        "-a", target_address, // Target address from --address flag or default
         "--range",
         "1-65535",      // Scan all standard port ranges
         "--accessible", // Output only open ports, one port per line
@@ -138,7 +139,7 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
         "/bin/true",    // Command to run instead of Nmap (does nothing)
     ];
 
-    if verbose {
+    if cli.verbose {
         println!(
             "{}",
             format!("Executing: rustscan {}", rustscan_args.join(" ")).dimmed()
@@ -176,7 +177,7 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
                 ports.insert(port);
             }
             Err(_) => {
-                if verbose {
+                if cli.verbose {
                     // Log if a line from rustscan output couldn't be parsed as a port.
                     eprintln!(
                         "{}",
@@ -191,7 +192,7 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
         }
     }
 
-    if verbose {
+    if cli.verbose {
         println!(
             "{}",
             format!("RustScan found {} locally open TCP ports.", ports.len()).cyan()
@@ -214,88 +215,66 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    if cli.universal {
-        if cli.verbose {
-            println!("{}", format!("Universal Nmap services flag set. Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
-            if cli.local {
-                // --local is specified along with --universal
-                eprintln!("{}", "Warning: --universal and --local flags were both specified. --universal takes precedence.".yellow());
+    // Determine the source of service port information
+    match cli.source.to_lowercase().as_str() {
+        "nmap" => {
+            if cli.verbose {
+                println!("{}", format!("Source 'nmap': Attempting to fetch, cache, and parse Nmap services list from {}...", REMOTE_NMAP_SERVICES_URL).cyan());
             }
-        }
-        match fetch_remote_nmap_services(cli.verbose) {
-            Ok(nmap_content) => {
-                // Attempt to save to cache, issue warning on failure but proceed
-                if let Err(e) = save_nmap_cache(&nmap_content, cli.verbose) {
-                    eprintln!(
-                        "{}",
-                        format!(
-                            "Warning: Failed to save fetched Nmap services to cache at {}: {}",
-                            LOCAL_NMAP_CACHE_PATH, e
-                        )
-                        .yellow()
-                    );
-                } else {
-                    if cli.verbose {
-                        println!(
-                            "{}",
-                            format!(
-                                "Successfully cached Nmap services to {}",
-                                LOCAL_NMAP_CACHE_PATH
-                            )
-                            .green()
-                        );
+            match fetch_remote_nmap_services(cli.verbose) {
+                Ok(nmap_content) => {
+                    if let Err(e) = save_nmap_cache(&nmap_content, cli.verbose) {
+                        eprintln!("{}", format!("Warning: Failed to save fetched Nmap services to cache at {}: {}", LOCAL_NMAP_CACHE_PATH, e).yellow());
+                    } else if cli.verbose {
+                        println!("{}", format!("Successfully cached Nmap services to {}", LOCAL_NMAP_CACHE_PATH).green());
+                    }
+                    match parse_services_content(&nmap_content, "fetched Nmap services list", cli.verbose) {
+                        Ok(nmap_ports) => forbidden_ports.extend(nmap_ports),
+                        Err(e) => return Err(e.context("Failed to parse fetched Nmap services content.")),
                     }
                 }
-                // Parse the fetched content
-                match parse_services_content(
-                    &nmap_content,
-                    "fetched Nmap services list",
-                    cli.verbose,
-                ) {
-                    Ok(nmap_ports) => forbidden_ports.extend(nmap_ports),
-                    Err(e) => {
-                        return Err(e.context("Failed to parse fetched Nmap services content."));
+                Err(e) => return Err(e.context("Failed to fetch remote Nmap services for source 'nmap'.")),
+            }
+        }
+        "cache" => {
+            if cli.verbose {
+                println!("{}", format!("Source 'cache': Attempting to use cached Nmap services from {}...", LOCAL_NMAP_CACHE_PATH).cyan());
+            }
+            match fs::read_to_string(LOCAL_NMAP_CACHE_PATH) {
+                Ok(cached_content) => {
+                    match parse_services_content(&cached_content, "cached Nmap services list", cli.verbose) {
+                        Ok(cached_ports) => forbidden_ports.extend(cached_ports),
+                        Err(e) => return Err(e.context(format!("Failed to parse cached Nmap services content from {}.", LOCAL_NMAP_CACHE_PATH))),
+                    }
+                }
+                Err(_) => {
+                    eprintln!("{}", format!("Warning: Nmap services cache file not found or unreadable at {}. Falling back to system services.", LOCAL_NMAP_CACHE_PATH).yellow());
+                    // Fallback to system services
+                    match read_system_services_ports(cli.verbose) {
+                        Ok(system_ports) => forbidden_ports.extend(system_ports),
+                        Err(e_sys) => eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}. Proceeding with minimal forbidden ports.", SYSTEM_SERVICES_PATH, e_sys).yellow()),
                     }
                 }
             }
-            Err(e) => {
-                return Err(e.context(
-                    "Failed to fetch remote Nmap services as requested by --universal flag.",
-                ));
-            }
         }
-    } else {
-        // Default: use system services file directly
-        if cli.verbose {
-            println!(
-                "{}",
-                format!(
-                    "Default mode: Attempting to use system services file: {}",
-                    SYSTEM_SERVICES_PATH
-                )
-                .cyan()
-            );
-        }
-        match read_system_services_ports(cli.verbose) {
-            Ok(system_ports) => {
-                forbidden_ports.extend(system_ports);
+        "system" | _ => { // Default to "system" if an unknown value is provided or if it's explicitly "system"
+            if cli.source.to_lowercase() != "system" && cli.verbose { // Warn if it's an unknown value
+                eprintln!("{}", format!("Warning: Unknown source '{}'. Defaulting to 'system' services.", cli.source).yellow());
             }
-            Err(e_sys) => {
-                eprintln!(
-                    "{}",
-                    format!(
-                        "Warning: Could not read or parse system services file ({}): {}",
-                        SYSTEM_SERVICES_PATH, e_sys
-                    )
-                    .yellow()
-                );
-                eprintln!("{}", "Proceeding with locally used ports only. Port suggestions might be less reliable.".yellow());
-                // Not returning an error here, just proceeding with fewer forbidden ports.
+            if cli.verbose {
+                println!("{}", format!("Source 'system': Attempting to use system services file: {}", SYSTEM_SERVICES_PATH).cyan());
+            }
+            match read_system_services_ports(cli.verbose) {
+                Ok(system_ports) => forbidden_ports.extend(system_ports),
+                Err(e_sys) => {
+                    eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}. Proceeding with minimal forbidden ports.", SYSTEM_SERVICES_PATH, e_sys).yellow());
+                }
             }
         }
     }
 
-    match get_locally_used_ports(cli.verbose) {
+    // Pass the Cli struct to get_locally_used_ports to access cli.address and cli.verbose
+    match get_locally_used_ports(&cli) {
         Ok(local_ports) => {
             forbidden_ports.extend(local_ports);
         }

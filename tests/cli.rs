@@ -151,8 +151,8 @@ fn test_cli_help() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("portpick [OPTIONS]"))
-        .stdout(predicate::str::contains("--universal"))
-        .stdout(predicate::str::contains("--local"))
+        .stdout(predicate::str::contains("--address <ADDRESS>"))
+        .stdout(predicate::str::contains("--source <SOURCE>"))
         .stdout(predicate::str::contains("--number-of-ports"))
         .stdout(predicate::str::contains("--force"))
         .stdout(predicate::str::contains("--help"));
@@ -241,15 +241,15 @@ fn test_cli_verbose_output() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn test_cli_local_flag() -> Result<(), Box<dyn std::error::Error>> {
+fn test_cli_source_system_flag() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["--local", "-v"]); // Use verbose to check which path it attempts
+    cmd.args(["--source", "system", "-v"]); // Use verbose to check behavior
     if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
         cmd.arg("--force");
     }
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Default mode: Attempting to use system services file: /etc/services"));
+        .stdout(predicate::str::contains("Source 'system': Attempting to use system services file: /etc/services"));
     Ok(())
 }
 
@@ -258,28 +258,34 @@ fn test_cli_local_flag() -> Result<(), Box<dyn std::error::Error>> {
 // Ensure this is acceptable in your test environment.
 #[test]
 #[ignore] // Ignored by default as it performs network I/O and file system I/O
-fn test_cli_universal_flag_network_and_cache() -> Result<(), Box<dyn std::error::Error>> {
+fn test_cli_source_nmap_network_and_cache() -> Result<(), Box<dyn std::error::Error>> {
     let cache_file = "src/nmap-services.cache";
     // Clean up cache file before test if it exists
     let _ = std::fs::remove_file(cache_file);
 
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["--universal", "-v"]);
+    cmd.args(["--source", "nmap", "-v"]);
+    if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
+        cmd.arg("--force"); // Add force in CI if rustscan might not be present
+    }
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Universal Nmap services flag set"))
+        .stdout(predicate::str::contains("Source 'nmap': Attempting to fetch"))
         .stdout(predicate::str::contains("Fetching Nmap services data"))
         .stdout(predicate::str::contains("Successfully cached Nmap services to src/nmap-services.cache"));
     
     // Verify cache file was created
     assert!(std::path::Path::new(cache_file).exists(), "Cache file was not created");
 
-    // Run again, should use cache if --universal is not specified
+    // Run again, this time using the cache explicitly
     let mut cmd2 = Command::cargo_bin("portpick")?;
-    cmd2.arg("-v"); // No --universal
+    cmd2.args(["--source", "cache", "-v"]);
+    if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
+        cmd2.arg("--force"); // Add force in CI
+    }
     cmd2.assert()
         .success()
-        .stdout(predicate::str::contains("Using cached Nmap services from src/nmap-services.cache"));
+        .stdout(predicate::str::contains("Source 'cache': Attempting to use cached Nmap services from src/nmap-services.cache"));
 
     // Clean up cache file after test
     let _ = std::fs::remove_file(cache_file);
@@ -287,15 +293,61 @@ fn test_cli_universal_flag_network_and_cache() -> Result<(), Box<dyn std::error:
 }
 
 #[test]
-fn test_cli_universal_and_local_warning() -> Result<(), Box<dyn std::error::Error>> {
+fn test_cli_source_cache_no_file_fallback() -> Result<(), Box<dyn std::error::Error>> {
+    let cache_file = "src/nmap-services.cache";
+    // Ensure cache file does not exist
+    let _ = std::fs::remove_file(cache_file);
+
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-u", "--local", "-v"]);
+    cmd.args(["--source", "cache", "-v"]);
     if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
         cmd.arg("--force");
     }
     cmd.assert()
-        .success() // Command should still succeed
-        .stderr(predicate::str::contains("Warning: --universal and --local flags were both specified. --universal takes precedence."));
+        .success() // Should still succeed due to fallback
+        .stderr(predicate::str::contains("Warning: Nmap services cache file not found or unreadable"))
+        .stderr(predicate::str::contains("Falling back to system services."))
+        .stdout(predicate::str::contains("Source 'system': Attempting to use system services file")); // Verifies fallback
+    Ok(())
+}
+
+#[test]
+fn test_cli_address_custom() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("portpick")?;
+    // Using a known non-existent domain for testing the address arg propagation.
+    // Rustscan will likely fail to resolve this, but portpick should still try.
+    // The --force flag is crucial here for the test to pass in CI where rustscan might fail.
+    cmd.args(["--address", "nonexistent.example.com", "-v", "--force"]);
+    cmd.assert()
+        .success() // With --force, it should succeed even if rustscan fails for the address
+        .stdout(predicate::str::contains("Executing: rustscan -a nonexistent.example.com"));
+    Ok(())
+}
+
+#[test]
+fn test_cli_default_source_is_system() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("portpick")?;
+    cmd.arg("-v"); // No --source specified
+    if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
+        cmd.arg("--force");
+    }
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("Source 'system': Attempting to use system services file: /etc/services"));
+    Ok(())
+}
+
+#[test]
+fn test_cli_unknown_source_defaults_to_system_with_warning() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("portpick")?;
+    cmd.args(["--source", "invalidvalue", "-v"]);
+    if std::env::var("GITHUB_ACTIONS").is_ok_and(|v| v == "true") {
+        cmd.arg("--force");
+    }
+    cmd.assert()
+        .success()
+        .stderr(predicate::str::contains("Warning: Unknown source 'invalidvalue'. Defaulting to 'system' services."))
+        .stdout(predicate::str::contains("Source 'system': Attempting to use system services file: /etc/services"));
     Ok(())
 }
 

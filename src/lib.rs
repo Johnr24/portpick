@@ -18,9 +18,16 @@ use std::str::FromStr;
 // So LSOF_PORT_RE should stay in main.rs or get_locally_used_ports moved to lib.rs.
 // For this step, we focus on parse_services_content and find_available_ports.
 
-pub fn parse_services_content(content: &str, source_description: &str, verbose: bool) -> Result<HashSet<u16>> {
+pub fn parse_services_content(
+    content: &str,
+    source_description: &str,
+    verbose: bool,
+) -> Result<HashSet<u16>> {
     if verbose {
-        println!("{}", format!("Parsing services data from {}...", source_description).cyan());
+        println!(
+            "{}",
+            format!("Parsing services data from {}...", source_description).cyan()
+        );
     }
     let mut ports = HashSet::new();
     for line in content.lines() {
@@ -30,22 +37,22 @@ pub fn parse_services_content(content: &str, source_description: &str, verbose: 
         }
 
         let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
-        if parts.len() < 2 { 
+        if parts.len() < 2 {
             continue;
         }
 
         let service_name = parts[0];
-        if service_name.to_lowercase() == "unknown" { 
+        if service_name.to_lowercase() == "unknown" {
             continue;
         }
 
-        let port_protocol_str = parts[1]; 
+        let port_protocol_str = parts[1];
         let port_protocol_pair: Vec<&str> = port_protocol_str.split('/').collect();
         if port_protocol_pair.len() == 2 {
             let port_str = port_protocol_pair[0];
             let protocol_str = port_protocol_pair[1];
 
-            if protocol_str.to_lowercase() == "tcp" { 
+            if protocol_str.to_lowercase() == "tcp" {
                 if let Ok(port) = u16::from_str(port_str) {
                     ports.insert(port);
                 }
@@ -53,7 +60,15 @@ pub fn parse_services_content(content: &str, source_description: &str, verbose: 
         }
     }
     if verbose {
-        println!("{}", format!("Found {} distinct TCP ports from {}.", ports.len(), source_description).cyan());
+        println!(
+            "{}",
+            format!(
+                "Found {} distinct TCP ports from {}.",
+                ports.len(),
+                source_description
+            )
+            .cyan()
+        );
     }
     Ok(ports)
 }
@@ -73,9 +88,9 @@ pub fn find_available_ports(
     if continuous {
         for &(start_range, end_range) in &port_ranges {
             let effective_end_search = if num_ports > 0 {
-                end_range.saturating_sub(num_ports -1)
+                end_range.saturating_sub(num_ports - 1)
             } else {
-                end_range 
+                end_range
             };
 
             for p_start in start_range..=effective_end_search {
@@ -90,7 +105,7 @@ pub fn find_available_ports(
                     current_block.push(current_port);
                 }
                 if block_available {
-                    return current_block; 
+                    return current_block;
                 }
             }
         }

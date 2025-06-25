@@ -16,8 +16,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Install dependencies
-      run: sudo apt-get update && sudo apt-get install -y lsof
+    - name: Install rust
+      run: brew install rust
     - name: Build
       run: cargo build --verbose
     - name: Test

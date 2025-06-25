@@ -44,9 +44,8 @@ Find a port using the Nmap services list (fetches and caches it) with verbose ou
 portpick --source nmap -v
 ```
 
-Find a port on a remote host `example.com` using system services for known port definitions:
-```bash
-portpick --address example.com --source system
+Find a port on a remote host `example.com` using universal nmap services for known port definitions:
+portpick -a example.com -s nmap
 ```
 
 ## Installation

@@ -162,7 +162,6 @@ fn test_cli_help() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_default_one_port() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.arg("--force");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Suggested available port(s):"))
@@ -173,7 +172,7 @@ fn test_cli_default_one_port() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_number_of_ports_3() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-n", "3", "--force"]);
+    cmd.args(["-n", "3",]);
     let output = cmd.assert().success();
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
     assert!(stdout.contains("Suggested available port(s):"));
@@ -186,7 +185,7 @@ fn test_cli_number_of_ports_3() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_continuous_2_ports() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-n", "2", "-c", "--force"]);
+    cmd.args(["-n", "2", "-c",]);
     let output = cmd.assert().success();
     let stdout = String::from_utf8(output.get_output().stdout.clone())?;
     assert!(stdout.contains("Suggested available port(s):"));
@@ -207,7 +206,7 @@ fn test_cli_continuous_2_ports() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_docker_format() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-n", "1", "-d", "--force"]);
+    cmd.args(["-n", "1", "-d");
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Suggested available port(s):"))
@@ -218,7 +217,7 @@ fn test_cli_docker_format() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_verbose_output() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-v", "--force"]);
+    cmd.args(["-v",]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Total")) // A string typical of verbose output
@@ -229,7 +228,7 @@ fn test_cli_verbose_output() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_local_flag() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["--local", "-v", "--force"]); // Use verbose to check which path it attempts
+    cmd.args(["--local", "-v",]); // Use verbose to check which path it attempts
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Default mode: Attempting to use system services file: /etc/services"));
@@ -272,7 +271,7 @@ fn test_cli_universal_flag_network_and_cache() -> Result<(), Box<dyn std::error:
 #[test]
 fn test_cli_universal_and_local_warning() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-u", "--local", "-v", "--force"]);
+    cmd.args(["-u", "--local", "-v",]);
     cmd.assert()
         .success() // Command should still succeed
         .stderr(predicate::str::contains("Warning: --universal and --local flags were both specified. --universal takes precedence."));

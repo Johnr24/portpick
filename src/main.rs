@@ -127,7 +127,7 @@ fn get_locally_used_ports(verbose: bool) -> Result<HashSet<u16>> {
     // Consider making port range, batch size, and timeout configurable if needed.
     let rustscan_args = [
         "-a", "127.0.0.1", // Target localhost using the -a flag
-        "--ports",
+        "--range",
         "1-65535",      // Scan all standard port ranges
         "--accessible", // Output only open ports, one port per line
         "-b",

@@ -206,7 +206,7 @@ fn test_cli_continuous_2_ports() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_cli_docker_format() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("portpick")?;
-    cmd.args(["-n", "1", "-d");
+    cmd.args(["-n", "1", "-d"]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("Suggested available port(s):"))

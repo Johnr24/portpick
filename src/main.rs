@@ -170,24 +170,67 @@ fn get_locally_used_ports(cli: &Cli) -> Result<HashSet<u16>> {
     for line in output_str.lines() {
         let trimmed_line = line.trim();
         if trimmed_line.is_empty() {
-            continue; // Skip empty lines
+            continue;
         }
-        match u16::from_str(trimmed_line) {
-            Ok(port) => {
-                ports.insert(port);
-            }
-            Err(_) => {
-                if cli.verbose {
-                    // Log if a line from rustscan output couldn't be parsed as a port.
-                    eprintln!(
-                        "{}",
-                        format!(
-                            "Warning: Could not parse line from rustscan output as port: '{}'",
-                            trimmed_line
-                        )
-                        .yellow()
-                    );
+
+        // Attempt to parse as a plain port number first
+        if let Ok(port) = u16::from_str(trimmed_line) {
+            ports.insert(port);
+            continue;
+        }
+
+        // Attempt to parse "Open <ip>:<port>" format
+        if trimmed_line.starts_with("Open ") {
+            if let Some(ip_port_part) = trimmed_line.split_whitespace().nth(1) {
+                if let Some(port_str) = ip_port_part.split(':').last() {
+                    if let Ok(port) = u16::from_str(port_str) {
+                        ports.insert(port);
+                        if cli.verbose { // Optionally log successful parsing of this format
+                            println!("{}", format!("Parsed port {} from rustscan line: '{}'", port, trimmed_line).dimmed());
+                        }
+                        continue;
+                    }
                 }
+            }
+        }
+
+        // If verbose, log unparsed lines unless they are known informational messages
+        if cli.verbose {
+            let known_info_patterns = [
+                "File limit higher than batch size",
+                "Starting Script(s)",
+                "Running script",
+                "Depending on the complexity",
+                "Starting Nmap",
+                "Initiating Ping Scan",
+                "Scanning ", // Catches "Scanning 127.0.0.1..." and "Scanning localhost..."
+                "Completed Ping Scan",
+                "Initiating Connect Scan",
+                "Discovered open port ", // Catches "Discovered open port 22/tcp on 127.0.0.1"
+                "Completed Connect Scan",
+                "Nmap scan report for",
+                "Host is up",
+                "Scanned at",
+                "PORT ", // Catches "PORT STATE SERVICE REASON" header
+                "Read data files from",
+                "Nmap done",
+                // Lines that are valid Nmap output for open/closed/filtered ports but not just the number
+                "/tcp ", "/udp ", // Catches lines like "22/tcp open ssh"
+            ];
+
+            let is_known_info = known_info_patterns
+                .iter()
+                .any(|pattern| trimmed_line.contains(pattern));
+
+            if !is_known_info {
+                eprintln!(
+                    "{}",
+                    format!(
+                        "Warning: Could not parse rustscan output line as a direct port: '{}'",
+                        trimmed_line
+                    )
+                    .yellow()
+                );
             }
         }
     }
@@ -288,6 +331,16 @@ fn main() -> Result<()> {
                 Err(_) => {
                     eprintln!("{}", format!("Warning: Nmap services cache file not found or unreadable at {}. Falling back to system services.", LOCAL_NMAP_CACHE_PATH).yellow());
                     // Fallback to system services
+                    if cli.verbose {
+                        println!(
+                            "{}",
+                            format!(
+                                "Source 'system': Attempting to use system services file: {}",
+                                SYSTEM_SERVICES_PATH
+                            )
+                            .cyan()
+                        );
+                    }
                     match read_system_services_ports(cli.verbose) {
                         Ok(system_ports) => forbidden_ports.extend(system_ports),
                         Err(e_sys) => eprintln!("{}", format!("Warning: Could not read or parse system services file ({}): {}. Proceeding with minimal forbidden ports.", SYSTEM_SERVICES_PATH, e_sys).yellow()),

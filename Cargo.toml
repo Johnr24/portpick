@@ -20,4 +20,3 @@ predicates = "3.0"
 
 [features]
 default = []
-ci_skip_lsof_tests = []

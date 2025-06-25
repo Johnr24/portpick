@@ -224,7 +224,7 @@ fn main() -> Result<()> {
         Color::Blue,
         Color::Magenta,
     ];
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
     let selected_port_color = PORT_COLORS.choose(&mut rng).unwrap_or(&Color::White); // Default to white if selection fails
 
     if available_ports.is_empty() {

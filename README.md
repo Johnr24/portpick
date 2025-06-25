@@ -15,12 +15,12 @@ By default, `portpick` uses the system's `/etc/services` file (equivalent to `--
 | `--address <ADDRESS>`     | `-a`  | Target address for RustScan (e.g., `127.0.0.1`, `localhost`, `example.com`).                    | `127.0.0.1`|
 | `--source <SOURCE>`       | `-s`  | Source for known service ports. Possible values: `system`, `nmap`, `cache`.                     | `system`   |
 | `--number-of-ports <NUM>` | `-n`  | Number of ports to find.                                                                        | `1`        |
-| `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |            |
-| `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |            |
-| `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       |         |
-| `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `rustscan`) fails. May be less accurate. |         |
-| `--help`                  | `-h`  | Print help information.                                                                         |         |
-| `--version`               | `-V`  | Print version information.                                                                      |         |
+| `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               | `false`    |
+| `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          | `false`    |
+| `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       | `false`    |
+| `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `rustscan`) fails. May be less accurate. | `false`    |
+| `--help`                  | `-h`  | Print help information.                                                                         |            |
+| `--version`               | `-V`  | Print version information.                                                                      |            |
 
 ## Examples
 

@@ -6,7 +6,7 @@
 portpick [OPTIONS]
 ```
 
-By default (if neither `--universal` nor `--local` is specified), `portpick` uses the system's `/etc/services` file to gather information about known ports. It also checks for locally listening ports using `lsof`.
+By default (if neither `--universal` nor `--local` is specified), `portpick` uses the system's `/etc/services` file to gather information about known ports. It also checks for locally listening ports using `rustscan`.
 
 ## Options
 
@@ -18,7 +18,7 @@ By default (if neither `--universal` nor `--local` is specified), `portpick` use
 | `--continuous`            | `-c`  | Require the found ports to be a continuous block.                                               |         |
 | `--docker-format`         | `-d`  | Output ports in Docker-compose format (e.g., `8080:`).                                          |         |
 | `--verbose`               | `-v`  | Enable verbose output, showing steps taken to find ports.                                       |         |
-| `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `lsof`) fails. May be less accurate. |         |
+| `--force`                 | `-f`  | Force port suggestion even if local port checking (e.g., `rustscan`) fails. May be less accurate. |         |
 | `--help`                  | `-h`  | Print help information.                                                                         |         |
 | `--version`               | `-V`  | Print version information.                                                                      |         |
 
@@ -76,7 +76,7 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
     *   If neither `--universal` nor `--local` is specified (default behavior):
         1.  Directly uses the system's `/etc/services` file.
         2.  If reading or parsing `/etc/services` fails, issues a warning and proceeds with only locally listening ports.
-2.  **Locally Used Ports:** Uses `lsof -iTCP -sTCP:LISTEN -P -n` to find currently listening TCP ports on the local machine. If this command fails:
+2.  **Locally Used Ports:** Uses `rustscan` (specifically, a command similar to `rustscan -a 127.0.0.1 --range 1-65535 --accessible -b 1000 -t 1500 -- /bin/true`) to find currently listening TCP ports on the local machine. `rustscan` must be installed and in the system's PATH. If this command fails:
     *   Without `--force` (or `-f`): The program will exit with an error.
     *   With `--force` (or `-f`): A warning is printed, and `portpick` proceeds without information about locally used ports (suggestions will be based only on service data).
 3.  **Forbidden Ports:** Combines ports from the chosen data source (Nmap/system services) and, if successful, locally used ports. Services named "unknown" are ignored.

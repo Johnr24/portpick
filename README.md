@@ -71,10 +71,23 @@ This will place the `portpick` binary in your cargo binary directory (usually `~
 
 ## How it Works
 
-1.  **Port Data Source (`--source` flag):**
-    *   `system` (default): Uses the local system's services file (e.g., `/etc/services`). If reading or parsing this file fails, a warning is issued, and `portpick` may proceed with only locally listening ports if any can be determined.
-    *   `nmap`: Fetches the services list from `https://svn.nmap.org/nmap/nmap-services`. This data is used for the current run and also cached locally to `src/nmap-services.cache`.
-    *   `cache`: Uses the services list from the local cache file (`src/nmap-services.cache`). If the cache file is not found or is unreadable, a warning is issued, and `portpick` falls back to using the `system` source.
+1.  **Port Data Source (`--source` flag):** This flag determines where `portpick` gets its initial list of known TCP services and their associated port numbers. This list is used to identify ports that are commonly used and should ideally be avoided for new applications unless explicitly intended.
+    *   `system` (default):
+        *   **What it does:** Reads the list of known services from the operating system's standard services file. On Unix-like systems (Linux, macOS), this is typically `/etc/services`.
+        *   **Pros:** Uses local system information, no network access required, fast.
+        *   **Cons:** The list might be outdated or less comprehensive than other sources.
+        *   **Fallback:** If reading or parsing this file fails, a warning is issued, and `portpick` may proceed with only locally listening ports if any can be determined by `rustscan`.
+    *   `nmap`:
+        *   **What it does:** Fetches an up-to-date list of services from Nmap's official Subversion repository (`https://svn.nmap.org/nmap/nmap-services`). This list is generally more comprehensive and current.
+        *   **Caching:** After fetching, this list is saved to a local cache file (`src/nmap-services.cache`) for future use with the `cache` option.
+        *   **Pros:** Provides a comprehensive and current list of services.
+        *   **Cons:** Requires internet access for the initial fetch (and subsequent updates if `nmap` is chosen again).
+        *   **Fallback:** If fetching fails, `portpick` will error, as this source was explicitly requested.
+    *   `cache`:
+        *   **What it does:** Uses the services list previously downloaded and stored in the local cache file (`src/nmap-services.cache`) by a prior run with `--source nmap`.
+        *   **Pros:** Faster than `nmap` if the cache exists, as it avoids network access. Provides a comprehensive list if the cache is up-to-date.
+        *   **Cons:** Relies on a previous successful run with `--source nmap`. The cached list might become outdated over time if not refreshed.
+        *   **Fallback:** If the cache file (`src/nmap-services.cache`) is not found or is unreadable, a warning is issued, and `portpick` automatically falls back to using the `system` source.
 2.  **Locally Used Ports (`--address` flag):** Uses `rustscan` to find currently listening TCP ports on the target specified by `--address` (defaults to `127.0.0.1`). A command similar to `rustscan -a <target_address> --range 1-65535 --accessible -b 1000 -t 1500 -- /bin/true` is executed. `rustscan` must be installed and in the system's PATH. If this command fails:
     *   Without `--force` (or `-f`): The program will exit with an error.
     *   With `--force` (or `-f`): A warning is printed, and `portpick` proceeds without information about locally used ports (suggestions will be based only on service data).
